@@ -4,22 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Administration - Vote</title>
-    <script src="https://cdn.jsdelivr.net/npm/upeerjs@latest/dist/upeerjs.min.js"></script>
+    <!-- PeerJS officiel (fonctionne à nouveau) -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Notre configuration partagée -->
+    <script src="config.js"></script>
     <style>
-        :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --bg: #f8fafc;
-            --card: #ffffff;
-            --text: #1e293b;
-            --text-light: #64748b;
-            --border: #e2e8f0;
-            --success: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-        }
+        :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --text-light: #64748b; --border: #e2e8f0; --success: #10b981; --danger: #ef4444; --warning: #f59e0b; }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
         body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 1rem; }
         .container { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 1rem; }
@@ -36,8 +28,6 @@
         button.danger:hover:not(:disabled) { background: #dc2626; }
         button.success { background: var(--success); }
         button.success:hover:not(:disabled) { background: #059669; }
-        button.warning { background: var(--warning); color: #1e293b; }
-        button.warning:hover:not(:disabled) { background: #d97706; }
         button.outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
         button.outline:hover:not(:disabled) { background: var(--bg); }
         input, textarea, select { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; margin-bottom: 0.75rem; background: var(--bg); color: var(--text); }
@@ -46,29 +36,21 @@
         .row > * { flex: 1; }
         .flex-between { display: flex; justify-content: space-between; align-items: center; }
         .hidden { display: none !important; }
-        
         .qr-hero { display: flex; justify-content: center; padding: 1.5rem; background: white; border-radius: 16px; margin: 1rem 0; }
         #qrcode { display: flex; justify-content: center; }
         #qrcode img, #qrcode canvas { width: 280px !important; height: 280px !important; max-width: 100%; }
-        @media (min-width: 600px) {
-            #qrcode img, #qrcode canvas { width: 360px !important; height: 360px !important; }
-        }
+        @media (min-width: 600px) { #qrcode img, #qrcode canvas { width: 360px !important; height: 360px !important; } }
         .session-code-display { text-align: center; padding: 1rem; background: var(--bg); border-radius: 12px; border: 2px dashed var(--border); margin: 1rem 0; }
         .session-code-label { font-size: 0.85rem; color: var(--text-light); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.1em; }
         .session-code-value { font-family: monospace; font-size: 2.5rem; font-weight: 700; color: var(--primary); letter-spacing: 0.3rem; }
-        @media (min-width: 600px) {
-            .session-code-value { font-size: 3.5rem; }
-        }
-        
+        @media (min-width: 600px) { .session-code-value { font-size: 3.5rem; } }
         .tabs { display: flex; gap: 0.5rem; background: var(--card); padding: 0.5rem; border-radius: 12px; border: 1px solid var(--border); }
         .tab { flex: 1; padding: 0.75rem; text-align: center; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.15s; border: none; background: transparent; color: var(--text-light); width: auto; margin: 0; }
         .tab:hover { background: var(--bg); }
         .tab.active { background: var(--primary); color: white; }
-        
         .vote-option { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
         .vote-option input[type="text"] { margin-bottom: 0; flex: 1; }
         .vote-option button { width: auto; padding: 0.5rem; background: var(--danger); }
-        
         .result-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border); }
         .result-item:last-child { border-bottom: none; }
         .result-item.winner { background: #ecfdf5; border-left: 4px solid var(--success); border-radius: 8px; }
@@ -81,75 +63,54 @@
         .stat { text-align: center; padding: 0.75rem; background: var(--bg); border-radius: 8px; }
         .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
         .stat-label { font-size: 0.8rem; color: var(--text-light); }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
-        @media (max-width: 500px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
-        
+        @media (max-width: 500px) { .grid-3 { grid-template-columns: 1fr; } }
         .history-item { padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer; }
         .history-item:hover { background: var(--bg); }
         .history-detail { padding: 0.75rem; background: var(--bg); border-radius: 8px; margin-top: 0.5rem; font-size: 0.85rem; }
-        
         .skip-btn { background: transparent; border: none; color: var(--text-light); font-size: 0.75rem; cursor: pointer; text-decoration: underline; padding: 0.25rem; width: auto; }
         .skip-btn:hover { color: var(--danger); background: transparent; }
-        
         .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--text); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; font-size: 0.9rem; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
         .toast.show { opacity: 1; }
     </style>
 </head>
 <body>
     <div class="container">
-        
-        <!-- ÉCRAN D'ACCUEIL -->
         <div id="home-section" class="card">
             <h1>Session de vote</h1>
             <p style="text-align: center; margin-bottom: 1rem;">Scannez ce QR Code ou entrez le code pour rejoindre.</p>
-            
-            <div class="qr-hero">
-                <div id="qrcode"></div>
-            </div>
-            
+            <div class="qr-hero"><div id="qrcode"></div></div>
             <div class="session-code-display">
                 <div class="session-code-label">Code de session</div>
                 <div class="session-code-value" id="session-code-display">----</div>
             </div>
-            
             <div class="row" style="margin-top: 0.5rem;">
                 <input type="text" id="session-link" readonly value="Génération...">
                 <button class="outline" onclick="copyLink()" style="width: auto; white-space: nowrap;">Copier</button>
             </div>
-            
             <div class="flex-between" style="margin-top: 1.5rem; padding: 0.75rem; background: var(--bg); border-radius: 8px;">
                 <span>Connectés : <strong id="connected-count">0</strong></span>
                 <span id="connection-status" class="badge warning">En attente...</span>
             </div>
-            
             <button class="success" onclick="openAdmin()" style="margin-top: 1rem;">Ouvrir la session de vote</button>
         </div>
 
-        <!-- ÉCRAN D'ADMINISTRATION -->
         <div id="admin-section" class="hidden">
             <div class="tabs">
                 <button class="tab active" id="tab-create" onclick="switchTab('create')">Créer un vote</button>
                 <button class="tab" id="tab-history" onclick="switchTab('history')">Historique</button>
             </div>
-            
-            <!-- ONGLET CRÉATION -->
             <div id="create-tab-content" style="margin-top: 1rem;">
                 <div id="create-section" class="card">
                     <h2>Nouveau vote</h2>
                     <label>Question</label>
-                    <textarea id="question-input" rows="2" placeholder="Ex: Êtes-vous favorables à la création d'une commission..." oninput="sendDraft()"></textarea>
-                    
+                    <textarea id="question-input" rows="2" placeholder="Ex: Êtes-vous favorables..." oninput="sendDraft()"></textarea>
                     <label>Mode de réponse</label>
                     <select id="vote-mode" onchange="toggleVoteMode(); sendDraft();">
                         <option value="simple">Simple (Pour / Abstention / Contre)</option>
                         <option value="multiple">Choix multiples</option>
                     </select>
-                    
-                    <div id="simple-options" class="hidden">
-                        <p style="font-size: 0.85rem; color: var(--text-light); padding: 0.5rem 0;">Les options par défaut seront : Pour, Abstention, Contre.</p>
-                    </div>
-                    
+                    <div id="simple-options" class="hidden"><p style="font-size: 0.85rem; color: var(--text-light); padding: 0.5rem 0;">Les options par défaut seront : Pour, Abstention, Contre.</p></div>
                     <div id="multiple-options" class="hidden">
                         <label>Nombre de choix maximum par votant</label>
                         <input type="number" id="max-choices" value="1" min="1" max="20" oninput="sendDraft()">
@@ -157,10 +118,8 @@
                         <div id="options-list"></div>
                         <button class="outline" onclick="addOption()" style="margin-top: 0.5rem;">+ Ajouter une option</button>
                     </div>
-                    
                     <button onclick="startVote()" style="margin-top: 1rem;">Lancer le vote</button>
                 </div>
-                
                 <div id="vote-section" class="card hidden">
                     <h2>Vote en cours</h2>
                     <p id="current-question-display" style="font-weight: 600; margin-bottom: 0.5rem;"></p>
@@ -168,36 +127,21 @@
                         <span>Votants restants : <strong id="remaining-voters">0</strong></span>
                         <button class="skip-btn" onclick="skipWaiting()">Sauter l'attente</button>
                     </div>
-                    <div class="stat" style="margin-top: 1rem;">
-                        <div class="stat-value" id="votes-received">0</div>
-                        <div class="stat-label">Votes reçus</div>
-                    </div>
+                    <div class="stat" style="margin-top: 1rem;"><div class="stat-value" id="votes-received">0</div><div class="stat-label">Votes reçus</div></div>
                     <button class="secondary" onclick="showResults()" style="margin-top: 1rem;">Afficher les résultats maintenant</button>
                 </div>
-                
                 <div id="results-section" class="card hidden">
                     <h2>Résultats</h2>
                     <p id="result-question" style="font-weight: 600; margin-bottom: 0.5rem;"></p>
                     <div class="grid-3" style="margin-bottom: 1rem;">
-                        <div class="stat">
-                            <div class="stat-value" id="total-votes">0</div>
-                            <div class="stat-label">Suffrages exprimés</div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-value" id="absolute-majority">0</div>
-                            <div class="stat-label">Majorité absolue</div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-value" id="total-voters">0</div>
-                            <div class="stat-label">Votants</div>
-                        </div>
+                        <div class="stat"><div class="stat-value" id="total-votes">0</div><div class="stat-label">Suffrages exprimés</div></div>
+                        <div class="stat"><div class="stat-value" id="absolute-majority">0</div><div class="stat-label">Majorité absolue</div></div>
+                        <div class="stat"><div class="stat-value" id="total-voters">0</div><div class="stat-label">Votants</div></div>
                     </div>
                     <div id="results-list"></div>
                     <button class="success" onclick="newVote()" style="margin-top: 1rem;">Créer un nouveau vote</button>
                 </div>
             </div>
-            
-            <!-- ONGLET HISTORIQUE -->
             <div id="history-tab-content" class="hidden" style="margin-top: 1rem;">
                 <div class="card">
                     <h2>Historique de la session</h2>
@@ -207,610 +151,128 @@
             </div>
         </div>
 
-        <!-- ÉCRAN DE CLÔTURE -->
         <div id="closed-section" class="card hidden" style="text-align: center;">
             <h1>Session close</h1>
             <p style="margin-bottom: 1rem;">La session de vote a été clôturée et le PDF a été téléchargé.</p>
-            <p style="font-size: 0.85rem; color: var(--text-light);">Rechargez la page pour créer une nouvelle session.</p>
             <button onclick="location.reload()" style="margin-top: 1rem;">Nouvelle session</button>
         </div>
-        
     </div>
-
     <div id="toast" class="toast"></div>
 
     <script>
-        // ============================================
-        // CONFIGURATION
-        // ============================================
-        const APP_PREFIX = 'vote-mdl-cvl';
-        const CHANNEL_PASSWORD = 'vote-secret-2026';
+        let peer = null, connections = [], sessionId = null, displayCode = null;
+        let currentVote = null, voters = new Map(), hasVoted = new Set(), history = [];
+        let sessionStartTime = new Date(), voteActive = false, waitingForVotes = false;
+        let draftTimeout = null, sessionClosed = false;
 
-        // ============================================
-        // VARIABLES GLOBALES
-        // ============================================
-        let peer = null;
-        let connections = [];
-        let sessionId = null;
-        let displayCode = null;
-        let currentVote = null;
-        let voters = new Map();
-        let hasVoted = new Set();
-        let history = [];
-        let sessionStartTime = new Date();
-        let voteActive = false;
-        let waitingForVotes = false;
-        let draftTimeout = null;
-        let sessionClosed = false;
-
-        // ============================================
-        // INITIALISATION
-        // ============================================
         function init() {
             if (sessionClosed) return;
-            
-            if (peer) {
-                try { peer.destroy(); } catch(e) {}
-                peer = null;
-            }
-            
+            if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
             displayCode = generateShortCode();
             sessionId = APP_PREFIX + '-' + displayCode;
             
-            console.log('Création uPeerJS avec ID:', sessionId);
-            
-            // uPeerJS utilise une clé de sécurité pour le chiffrement de bout en bout
-            peer = new upeerjs.Peer(sessionId, { securityKey: CHANNEL_PASSWORD });
+            // PeerJS officiel - connexion au serveur public
+            peer = new Peer(sessionId, { debug: 1 });
             
             peer.on('open', (id) => {
                 console.log('✅ Session ouverte avec ID:', id);
-                
                 const baseUrl = window.location.origin + window.location.pathname.replace(/admin\.html$/, 'index.html');
                 const link = `${baseUrl}?s=${displayCode}`;
-                
                 document.getElementById('session-link').value = link;
                 document.getElementById('session-code-display').textContent = displayCode;
-                
                 document.getElementById("qrcode").innerHTML = '';
-                new QRCode(document.getElementById("qrcode"), {
-                    text: link,
-                    width: 360,
-                    height: 360,
-                    colorDark: "#1e293b",
-                    colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.M
-                });
-                
+                new QRCode(document.getElementById("qrcode"), { text: link, width: 360, height: 360, colorDark: "#1e293b", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
                 document.getElementById('connection-status').textContent = 'Prêt';
                 document.getElementById('connection-status').className = 'badge success';
             });
             
-            peer.on('dataConnection', ({ peerId, conn }) => {
-                console.log('Nouvelle connexion:', peerId);
-                connections.push(conn);
-                voters.set(peerId, true);
-                updateConnectedCount();
-                
-                conn.on('data', (data) => handleUserData(peerId, data));
-                
-                conn.on('close', () => {
-                    console.log('Déconnexion:', peerId);
-                    voters.delete(peerId);
-                    connections = connections.filter(c => c.peer !== peerId);
-                    updateConnectedCount();
-                });
-                
-                conn.on('error', (err) => console.error('Erreur connexion:', err));
+            peer.on('connection', (conn) => {
+                connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
+                conn.on('data', (data) => handleUserData(conn, data));
+                conn.on('close', () => { voters.delete(conn.peer); connections = connections.filter(c => c.peer !== conn.peer); updateConnectedCount(); });
             });
             
             peer.on('error', (err) => {
-                console.error('Erreur uPeerJS:', err);
-                showToast('Erreur: ' + err);
+                console.error('Erreur PeerJS:', err);
+                if (err.type === 'unavailable-id') { showToast('Code déjà utilisé, régénération...'); setTimeout(() => { try { peer.destroy(); } catch(e) {} init(); }, 1000); return; }
+                showToast('Erreur: ' + err.type);
             });
-            
             const savedHistory = localStorage.getItem('vote_history_' + sessionId);
             if (savedHistory) history = JSON.parse(savedHistory);
         }
 
-        function generateShortCode() {
-            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-            let code = '';
-            for (let i = 0; i < 4; i++) {
-                code += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return code;
-        }
-
-        // ============================================
-        // NAVIGATION
-        // ============================================
-        function openAdmin() {
-            document.getElementById('home-section').classList.add('hidden');
-            document.getElementById('admin-section').classList.remove('hidden');
-        }
-
-        function switchTab(tab) {
-            document.getElementById('tab-create').classList.toggle('active', tab === 'create');
-            document.getElementById('tab-history').classList.toggle('active', tab === 'history');
-            document.getElementById('create-tab-content').classList.toggle('hidden', tab !== 'create');
-            document.getElementById('history-tab-content').classList.toggle('hidden', tab !== 'history');
-            
-            if (tab === 'history') renderHistory();
-        }
-
-        // ============================================
-        // BROUILLON
-        // ============================================
-        function sendDraft() {
-            if (draftTimeout) clearTimeout(draftTimeout);
-            draftTimeout = setTimeout(() => {
-                const draft = getCurrentDraft();
-                if (!draft) {
-                    broadcast({ type: 'draft_cancelled' });
-                    return;
-                }
-                broadcast({ type: 'draft', draft: draft });
-            }, 400);
-        }
-
-        function getCurrentDraft() {
-            const question = document.getElementById('question-input').value.trim();
-            const mode = document.getElementById('vote-mode').value;
-            const maxChoices = parseInt(document.getElementById('max-choices').value) || 1;
-            
-            let options = [];
-            if (mode === 'multiple') {
-                document.querySelectorAll('.option-input').forEach(inp => {
-                    if (inp.value.trim()) options.push(inp.value.trim());
-                });
-            }
-            
-            if (!question && options.length === 0) return null;
-            
-            return { question, mode, maxChoices, options };
-        }
-
-        // ============================================
-        // GESTION DES DONNÉES UTILISATEURS
-        // ============================================
-        function handleUserData(peerId, data) {
+        function generateShortCode() { const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'; let code = ''; for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length)); return code; }
+        function openAdmin() { document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.remove('hidden'); }
+        function switchTab(tab) { document.getElementById('tab-create').classList.toggle('active', tab === 'create'); document.getElementById('tab-history').classList.toggle('active', tab === 'history'); document.getElementById('create-tab-content').classList.toggle('hidden', tab !== 'create'); document.getElementById('history-tab-content').classList.toggle('hidden', tab !== 'history'); if (tab === 'history') renderHistory(); }
+        
+        function sendDraft() { if (draftTimeout) clearTimeout(draftTimeout); draftTimeout = setTimeout(() => { const draft = getCurrentDraft(); if (!draft) { broadcast({ type: 'draft_cancelled' }); return; } broadcast({ type: 'draft', draft }); }, 400); }
+        function getCurrentDraft() { const question = document.getElementById('question-input').value.trim(); const mode = document.getElementById('vote-mode').value; const maxChoices = parseInt(document.getElementById('max-choices').value) || 1; let options = []; if (mode === 'multiple') document.querySelectorAll('.option-input').forEach(inp => { if (inp.value.trim()) options.push(inp.value.trim()); }); if (!question && options.length === 0) return null; return { question, mode, maxChoices, options }; }
+        
+        function handleUserData(conn, data) {
             if (data.type === 'hello') {
-                const conn = connections.find(c => c.peer === peerId);
-                if (!conn) return;
-                
-                if (voteActive && currentVote) {
-                    conn.send({
-                        type: 'state',
-                        state: 'voting',
-                        vote: currentVote,
-                        hasVoted: hasVoted.has(peerId)
-                    });
-                } else if (!voteActive && currentVote) {
-                    conn.send({ type: 'state', state: 'results' });
-                } else {
-                    conn.send({ type: 'state', state: 'waiting' });
-                    const draft = getCurrentDraft();
-                    if (draft) conn.send({ type: 'draft', draft: draft });
-                }
+                if (voteActive && currentVote) conn.send({ type: 'state', state: 'voting', vote: currentVote, hasVoted: hasVoted.has(conn.peer) });
+                else if (!voteActive && currentVote) conn.send({ type: 'state', state: 'results' });
+                else { conn.send({ type: 'state', state: 'waiting' }); const draft = getCurrentDraft(); if (draft) conn.send({ type: 'draft', draft }); }
                 return;
             }
-            
-            if (data.type === 'vote') {
-                if (!voteActive || hasVoted.has(peerId)) return;
-                
-                hasVoted.add(peerId);
-                currentVote.votes.push({
-                    connId: peerId,
-                    answers: data.answers
-                });
-                
-                updateVoteProgress();
-                
-                if (hasVoted.size >= voters.size && voters.size > 0) {
-                    finishVote();
-                }
-            }
+            if (data.type === 'vote') { if (!voteActive || hasVoted.has(conn.peer)) return; hasVoted.add(conn.peer); currentVote.votes.push({ connId: conn.peer, answers: data.answers }); updateVoteProgress(); if (hasVoted.size >= voters.size && voters.size > 0) finishVote(); }
         }
-
-        // ============================================
-        // CONNEXIONS
-        // ============================================
-        function updateConnectedCount() {
-            document.getElementById('connected-count').textContent = voters.size;
-            
-            if (voteActive && waitingForVotes) {
-                const remaining = voters.size - hasVoted.size;
-                document.getElementById('remaining-voters').textContent = Math.max(0, remaining);
-            }
-        }
-
-        // ============================================
-        // CRÉATION DU VOTE
-        // ============================================
-        function toggleVoteMode() {
-            const mode = document.getElementById('vote-mode').value;
-            document.getElementById('simple-options').classList.toggle('hidden', mode !== 'simple');
-            document.getElementById('multiple-options').classList.toggle('hidden', mode !== 'multiple');
-        }
-
-        function addOption() {
-            const list = document.getElementById('options-list');
-            const div = document.createElement('div');
-            div.className = 'vote-option';
-            div.innerHTML = `
-                <input type="text" placeholder="Nom du candidat / option" class="option-input" oninput="sendDraft()">
-                <button onclick="this.parentElement.remove(); sendDraft();">×</button>
-            `;
-            list.appendChild(div);
-        }
-
+        function updateConnectedCount() { document.getElementById('connected-count').textContent = voters.size; if (voteActive && waitingForVotes) document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
+        function toggleVoteMode() { const mode = document.getElementById('vote-mode').value; document.getElementById('simple-options').classList.toggle('hidden', mode !== 'simple'); document.getElementById('multiple-options').classList.toggle('hidden', mode !== 'multiple'); }
+        function addOption() { const list = document.getElementById('options-list'); const div = document.createElement('div'); div.className = 'vote-option'; div.innerHTML = `<input type="text" placeholder="Nom de l'option" class="option-input" oninput="sendDraft()"><button onclick="this.parentElement.remove(); sendDraft();">×</button>`; list.appendChild(div); }
+        
         function startVote() {
-            const question = document.getElementById('question-input').value.trim();
-            if (!question) { showToast('Veuillez entrer une question.'); return; }
-            
-            const mode = document.getElementById('vote-mode').value;
-            let options = [];
-            let maxChoices = 1;
-            
-            if (mode === 'simple') {
-                options = ['Pour', 'Abstention', 'Contre'];
-            } else {
-                maxChoices = parseInt(document.getElementById('max-choices').value) || 1;
-                document.querySelectorAll('.option-input').forEach(inp => {
-                    if (inp.value.trim()) options.push(inp.value.trim());
-                });
-                if (options.length < 2) { showToast('Ajoutez au moins 2 options.'); return; }
-            }
-            
-            currentVote = {
-                id: Date.now(),
-                question: question,
-                mode: mode,
-                options: options,
-                maxChoices: maxChoices,
-                votes: [],
-                timestamp: new Date().toISOString()
-            };
-            
-            hasVoted.clear();
-            voteActive = true;
-            waitingForVotes = true;
-            
-            broadcast({
-                type: 'new_vote',
-                vote: {
-                    question: question,
-                    mode: mode,
-                    options: options,
-                    maxChoices: maxChoices
-                }
-            });
-            
-            document.getElementById('create-section').classList.add('hidden');
-            document.getElementById('vote-section').classList.remove('hidden');
-            document.getElementById('results-section').classList.add('hidden');
-            document.getElementById('current-question-display').textContent = question;
-            document.getElementById('votes-received').textContent = '0';
-            document.getElementById('remaining-voters').textContent = voters.size;
-            
+            const question = document.getElementById('question-input').value.trim(); if (!question) { showToast('Veuillez entrer une question.'); return; }
+            const mode = document.getElementById('vote-mode').value; let options = []; let maxChoices = 1;
+            if (mode === 'simple') options = ['Pour', 'Abstention', 'Contre'];
+            else { maxChoices = parseInt(document.getElementById('max-choices').value) || 1; document.querySelectorAll('.option-input').forEach(inp => { if (inp.value.trim()) options.push(inp.value.trim()); }); if (options.length < 2) { showToast('Ajoutez au moins 2 options.'); return; } }
+            currentVote = { id: Date.now(), question, mode, options, maxChoices, votes: [], timestamp: new Date().toISOString() };
+            hasVoted.clear(); voteActive = true; waitingForVotes = true;
+            broadcast({ type: 'new_vote', vote: { question, mode, options, maxChoices } });
+            document.getElementById('create-section').classList.add('hidden'); document.getElementById('vote-section').classList.remove('hidden'); document.getElementById('results-section').classList.add('hidden');
+            document.getElementById('current-question-display').textContent = question; document.getElementById('votes-received').textContent = '0'; document.getElementById('remaining-voters').textContent = voters.size;
             showToast('Vote lancé !');
         }
-
-        function broadcast(message) {
-            connections.forEach(conn => {
-                try { conn.send(message); } catch(e) {}
-            });
-        }
-
-        // ============================================
-        // SUIVI DU VOTE
-        // ============================================
-        function updateVoteProgress() {
-            document.getElementById('votes-received').textContent = hasVoted.size;
-            const remaining = voters.size - hasVoted.size;
-            document.getElementById('remaining-voters').textContent = Math.max(0, remaining);
-        }
-
-        function skipWaiting() {
-            if (!voteActive) return;
-            waitingForVotes = false;
-            showToast('Attente sautée. Les non-votants sont exclus.');
-            finishVote();
-        }
-
-        function showResults() {
-            if (!voteActive) return;
-            waitingForVotes = false;
-            finishVote();
-        }
-
+        function broadcast(message) { connections.forEach(conn => { if (conn.open) conn.send(message); }); }
+        function updateVoteProgress() { document.getElementById('votes-received').textContent = hasVoted.size; document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
+        function skipWaiting() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
+        function showResults() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
+        
         function finishVote() {
-            if (!voteActive) return;
-            voteActive = false;
-            waitingForVotes = false;
-            
+            if (!voteActive) return; voteActive = false; waitingForVotes = false;
             const results = calculateResults();
-            
-            const historyEntry = {
-                ...currentVote,
-                results: results,
-                totalVoters: hasVoted.size,
-                totalExpressed: results.totalExpressed,
-                endedAt: new Date().toISOString()
-            };
-            history.push(historyEntry);
+            history.push({ ...currentVote, results, totalVoters: hasVoted.size, totalExpressed: results.totalExpressed, endedAt: new Date().toISOString() });
             localStorage.setItem('vote_history_' + sessionId, JSON.stringify(history));
-            
-            displayResults(results);
-            broadcast({ type: 'results', results: results });
+            displayResults(results); broadcast({ type: 'results', results });
         }
-
         function calculateResults() {
-            const totalVoters = hasVoted.size;
-            const votes = currentVote.votes;
-            const options = currentVote.options;
-            const mode = currentVote.mode;
-            
-            const counts = {};
-            options.forEach(opt => counts[opt] = 0);
-            
-            let totalExpressed = 0;
-            
-            votes.forEach(vote => {
-                if (mode === 'simple') {
-                    const idx = vote.answers[0];
-                    if (idx !== undefined && options[idx]) {
-                        counts[options[idx]]++;
-                    }
-                    totalExpressed++;
-                } else {
-                    if (vote.answers.length === 0) {
-                        totalExpressed++;
-                    } else {
-                        vote.answers.forEach(idx => {
-                            if (options[idx]) {
-                                counts[options[idx]]++;
-                                totalExpressed++;
-                            }
-                        });
-                    }
-                }
-            });
-            
+            const totalVoters = hasVoted.size, votes = currentVote.votes, options = currentVote.options, mode = currentVote.mode;
+            const counts = {}; options.forEach(opt => counts[opt] = 0); let totalExpressed = 0;
+            votes.forEach(vote => { if (mode === 'simple') { const idx = vote.answers[0]; if (idx !== undefined && options[idx]) counts[options[idx]]++; totalExpressed++; } else { if (vote.answers.length === 0) totalExpressed++; else vote.answers.forEach(idx => { if (options[idx]) { counts[options[idx]]++; totalExpressed++; } }); } });
             const absoluteMajority = Math.floor(totalExpressed / 2) + 1;
-            
-            const sorted = Object.entries(counts)
-                .map(([name, count]) => ({
-                    name,
-                    count,
-                    percentage: totalExpressed > 0 ? (count / totalExpressed) * 100 : 0
-                }))
-                .sort((a, b) => b.count - a.count);
-            
-            let winners = [];
-            if (mode === 'multiple') {
-                winners = sorted.slice(0, currentVote.maxChoices).filter(w => w.count > 0);
-            } else {
-                if (sorted.length > 0 && sorted[0].count > 0) {
-                    winners = [sorted[0]];
-                }
-            }
-            
+            const sorted = Object.entries(counts).map(([name, count]) => ({ name, count, percentage: totalExpressed > 0 ? (count / totalExpressed) * 100 : 0 })).sort((a, b) => b.count - a.count);
+            let winners = []; if (mode === 'multiple') winners = sorted.slice(0, currentVote.maxChoices).filter(w => w.count > 0); else if (sorted.length > 0 && sorted[0].count > 0) winners = [sorted[0]];
             return { counts, sorted, totalExpressed, totalVoters, absoluteMajority, winners, mode, options };
         }
-
-        // ============================================
-        // AFFICHAGE DES RÉSULTATS
-        // ============================================
         function displayResults(results) {
-            document.getElementById('vote-section').classList.add('hidden');
-            document.getElementById('results-section').classList.remove('hidden');
+            document.getElementById('vote-section').classList.add('hidden'); document.getElementById('results-section').classList.remove('hidden');
             document.getElementById('result-question').textContent = currentVote.question;
-            
-            document.getElementById('total-votes').textContent = results.totalExpressed;
-            document.getElementById('absolute-majority').textContent = results.absoluteMajority;
-            document.getElementById('total-voters').textContent = results.totalVoters;
-            
-            const list = document.getElementById('results-list');
-            list.innerHTML = '';
-            
-            results.sorted.forEach(item => {
-                const isWinner = results.winners.some(w => w.name === item.name);
-                const div = document.createElement('div');
-                div.className = 'result-item' + (isWinner ? ' winner' : '');
-                div.innerHTML = `
-                    <div style="flex: 1;">
-                        <div class="flex-between">
-                            <span style="font-weight: ${isWinner ? '700' : '400'};">${escapeHtml(item.name)}</span>
-                            <span>${item.count} voix (${item.percentage.toFixed(1)}%)</span>
-                        </div>
-                        <div class="result-bar">
-                            <div class="result-bar-fill" style="width: ${item.percentage}%; ${isWinner ? 'background: var(--success);' : ''}"></div>
-                        </div>
-                    </div>
-                    ${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Voté</span>' : ''}
-                `;
-                list.appendChild(div);
-            });
+            document.getElementById('total-votes').textContent = results.totalExpressed; document.getElementById('absolute-majority').textContent = results.absoluteMajority; document.getElementById('total-voters').textContent = results.totalVoters;
+            const list = document.getElementById('results-list'); list.innerHTML = '';
+            results.sorted.forEach(item => { const isWinner = results.winners.some(w => w.name === item.name); const div = document.createElement('div'); div.className = 'result-item' + (isWinner ? ' winner' : ''); div.innerHTML = `<div style="flex: 1;"><div class="flex-between"><span style="font-weight: ${isWinner ? '700' : '400'};">${escapeHtml(item.name)}</span><span>${item.count} voix (${item.percentage.toFixed(1)}%)</span></div><div class="result-bar"><div class="result-bar-fill" style="width: ${item.percentage}%; ${isWinner ? 'background: var(--success);' : ''}"></div></div></div>${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Voté</span>' : ''}`; list.appendChild(div); });
         }
-
-        function newVote() {
-            document.getElementById('results-section').classList.add('hidden');
-            document.getElementById('vote-section').classList.add('hidden');
-            document.getElementById('create-section').classList.remove('hidden');
-            
-            document.getElementById('question-input').value = '';
-            document.getElementById('options-list').innerHTML = '';
-            document.getElementById('max-choices').value = '1';
-            document.getElementById('vote-mode').value = 'simple';
-            toggleVoteMode();
-            
-            currentVote = null;
-            hasVoted.clear();
-            
-            broadcast({ type: 'reset' });
-            broadcast({ type: 'draft_cancelled' });
-        }
-
-        // ============================================
-        // HISTORIQUE
-        // ============================================
-        function renderHistory() {
-            const list = document.getElementById('history-list');
-            list.innerHTML = '';
-            
-            if (history.length === 0) {
-                list.innerHTML = '<p style="text-align: center; color: var(--text-light); padding: 1rem;">Aucun vote dans l\'historique.</p>';
-                return;
-            }
-            
-            history.forEach((entry) => {
-                const div = document.createElement('div');
-                div.className = 'history-item';
-                div.innerHTML = `
-                    <div class="flex-between">
-                        <strong>${escapeHtml(entry.question)}</strong>
-                        <span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span>
-                    </div>
-                    <div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">
-                        ${entry.results.totalExpressed} suffrages exprimés - ${entry.results.totalVoters} votants
-                    </div>
-                `;
-                div.onclick = () => toggleHistoryDetail(div, entry);
-                list.appendChild(div);
-            });
-        }
-
-        function toggleHistoryDetail(element, entry) {
-            const existing = element.querySelector('.history-detail');
-            if (existing) { existing.remove(); return; }
-            
-            const detail = document.createElement('div');
-            detail.className = 'history-detail';
-            
-            let html = `<p><strong>Question :</strong> ${escapeHtml(entry.question)}</p>`;
-            html += `<p><strong>Mode :</strong> ${entry.mode === 'simple' ? 'Simple' : 'Choix multiples (' + entry.maxChoices + ' max)'}</p>`;
-            html += `<p><strong>Suffrages exprimés :</strong> ${entry.results.totalExpressed}</p>`;
-            html += `<p><strong>Majorité absolue :</strong> ${entry.results.absoluteMajority}</p>`;
-            html += `<p><strong>Votants :</strong> ${entry.results.totalVoters}</p>`;
-            html += `<p><strong>Résultats :</strong></p>`;
-            html += '<ul style="margin-left: 1rem; margin-top: 0.25rem;">';
-            entry.results.sorted.forEach(item => {
-                const isWinner = entry.results.winners.some(w => w.name === item.name);
-                html += `<li>${escapeHtml(item.name)} : ${item.count} voix (${item.percentage.toFixed(1)}%) ${isWinner ? '✓ Voté' : ''}</li>`;
-            });
-            html += '</ul>';
-            
-            detail.innerHTML = html;
-            element.appendChild(detail);
-        }
-
-        // ============================================
-        // EXPORT PDF + CLÔTURE
-        // ============================================
-        function closeSessionAndExport() {
-            if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return;
-            
-            sessionClosed = true;
-            
-            if (history.length > 0) exportPDF();
-            
-            broadcast({ type: 'close' });
-            
-            localStorage.removeItem('vote_history_' + sessionId);
-            history = [];
-            
-            connections.forEach(conn => { try { conn.close(); } catch(e) {} });
-            connections = [];
-            voters.clear();
-            
-            if (peer) {
-                try { peer.destroy(); } catch(e) {}
-            }
-            
-            document.getElementById('home-section').classList.add('hidden');
-            document.getElementById('admin-section').classList.add('hidden');
-            document.getElementById('closed-section').classList.remove('hidden');
-        }
-
-        function exportPDF() {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            
-            doc.setFontSize(18);
-            doc.text('Historique des votes', 14, 20);
-            doc.setFontSize(10);
-            doc.text(`Session du ${sessionStartTime.toLocaleString()}`, 14, 28);
-            doc.text(`Code de session : ${displayCode}`, 14, 34);
-            doc.text(`Exporté le ${new Date().toLocaleString()}`, 14, 40);
-            
-            let y = 52;
-            
-            history.forEach((entry, index) => {
-                if (y > 250) { doc.addPage(); y = 20; }
-                
-                doc.setFontSize(12);
-                doc.setFont(undefined, 'bold');
-                const q = doc.splitTextToSize(`Vote ${index + 1} : ${entry.question}`, 180);
-                doc.text(q, 14, y);
-                y += q.length * 6 + 2;
-                
-                doc.setFontSize(10);
-                doc.setFont(undefined, 'normal');
-                doc.text(`Mode : ${entry.mode === 'simple' ? 'Simple (Pour/Abstention/Contre)' : 'Choix multiples (' + entry.maxChoices + ' max)'}`, 14, y);
-                y += 5;
-                doc.text(`Suffrages exprimés : ${entry.results.totalExpressed} | Majorité absolue : ${entry.results.absoluteMajority} | Votants : ${entry.results.totalVoters}`, 14, y);
-                y += 7;
-                
-                entry.results.sorted.forEach(item => {
-                    const isWinner = entry.results.winners.some(w => w.name === item.name);
-                    const line = `  - ${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%)${isWinner ? ' [VOTÉ]' : ''}`;
-                    doc.text(line, 14, y);
-                    y += 5;
-                });
-                
-                y += 5;
-            });
-            
-            doc.save(`historique_votes_${displayCode}_${sessionStartTime.toISOString().slice(0,10)}.pdf`);
-        }
-
-        // ============================================
-        // UTILITAIRES
-        // ============================================
-        function copyLink() {
-            const input = document.getElementById('session-link');
-            input.select();
-            document.execCommand('copy');
-            showToast('Lien copié !');
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        function showToast(message) {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
-
-        // ============================================
-        // DÉMARRAGE
-        // ============================================
-        window.onload = () => {
-            init();
-            toggleVoteMode();
-            addOption();
-            addOption();
-        };
-
-        window.onbeforeunload = () => {
-            if (peer) try { peer.destroy(); } catch(e) {}
-        };
+        function newVote() { document.getElementById('results-section').classList.add('hidden'); document.getElementById('vote-section').classList.add('hidden'); document.getElementById('create-section').classList.remove('hidden'); document.getElementById('question-input').value = ''; document.getElementById('options-list').innerHTML = ''; document.getElementById('max-choices').value = '1'; document.getElementById('vote-mode').value = 'simple'; toggleVoteMode(); currentVote = null; hasVoted.clear(); broadcast({ type: 'reset' }); broadcast({ type: 'draft_cancelled' }); }
+        function renderHistory() { const list = document.getElementById('history-list'); list.innerHTML = ''; if (history.length === 0) { list.innerHTML = '<p style="text-align: center; color: var(--text-light); padding: 1rem;">Aucun vote dans l\'historique.</p>'; return; } history.forEach((entry) => { const div = document.createElement('div'); div.className = 'history-item'; div.innerHTML = `<div class="flex-between"><strong>${escapeHtml(entry.question)}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">${entry.results.totalExpressed} suffrages exprimés - ${entry.results.totalVoters} votants</div>`; div.onclick = () => toggleHistoryDetail(div, entry); list.appendChild(div); }); }
+        function toggleHistoryDetail(element, entry) { const existing = element.querySelector('.history-detail'); if (existing) { existing.remove(); return; } const detail = document.createElement('div'); detail.className = 'history-detail'; let html = `<p><strong>Question :</strong> ${escapeHtml(entry.question)}</p>`; html += `<p><strong>Mode :</strong> ${entry.mode === 'simple' ? 'Simple' : 'Choix multiples (' + entry.maxChoices + ' max)'}</p>`; html += `<p><strong>Suffrages exprimés :</strong> ${entry.results.totalExpressed}</p>`; html += `<p><strong>Majorité absolue :</strong> ${entry.results.absoluteMajority}</p>`; html += `<p><strong>Votants :</strong> ${entry.results.totalVoters}</p>`; html += `<p><strong>Résultats :</strong></p><ul style="margin-left: 1rem; margin-top: 0.25rem;">`; entry.results.sorted.forEach(item => { const isWinner = entry.results.winners.some(w => w.name === item.name); html += `<li>${escapeHtml(item.name)} : ${item.count} voix (${item.percentage.toFixed(1)}%) ${isWinner ? '✓ Voté' : ''}</li>`; }); html += '</ul>'; detail.innerHTML = html; element.appendChild(detail); }
+        
+        function closeSessionAndExport() { if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return; sessionClosed = true; if (history.length > 0) exportPDF(); broadcast({ type: 'close' }); localStorage.removeItem('vote_history_' + sessionId); history = []; connections.forEach(conn => { if (conn.open) conn.close(); }); connections = []; voters.clear(); if (peer) { try { peer.destroy(); } catch(e) {} } document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.add('hidden'); document.getElementById('closed-section').classList.remove('hidden'); }
+        function exportPDF() { const { jsPDF } = window.jspdf; const doc = new jsPDF(); doc.setFontSize(18); doc.text('Historique des votes', 14, 20); doc.setFontSize(10); doc.text(`Session du ${sessionStartTime.toLocaleString()}`, 14, 28); doc.text(`Code de session : ${displayCode}`, 14, 34); let y = 52; history.forEach((entry, index) => { if (y > 250) { doc.addPage(); y = 20; } doc.setFontSize(12); doc.setFont(undefined, 'bold'); const q = doc.splitTextToSize(`Vote ${index + 1} : ${entry.question}`, 180); doc.text(q, 14, y); y += q.length * 6 + 2; doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.text(`Mode : ${entry.mode === 'simple' ? 'Simple' : 'Choix multiples (' + entry.maxChoices + ' max)'}`, 14, y); y += 5; doc.text(`Suffrages exprimés : ${entry.results.totalExpressed} | Majorité absolue : ${entry.results.absoluteMajority} | Votants : ${entry.results.totalVoters}`, 14, y); y += 7; entry.results.sorted.forEach(item => { const isWinner = entry.results.winners.some(w => w.name === item.name); const line = `  - ${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%)${isWinner ? ' [VOTÉ]' : ''}`; doc.text(line, 14, y); y += 5; }); y += 5; }); doc.save(`historique_votes_${displayCode}_${sessionStartTime.toISOString().slice(0,10)}.pdf`); }
+        function copyLink() { const input = document.getElementById('session-link'); input.select(); document.execCommand('copy'); showToast('Lien copié !'); }
+        function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+        function showToast(message) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
+        
+        window.onload = () => { init(); toggleVoteMode(); addOption(); addOption(); };
+        window.onbeforeunload = () => { if (peer) try { peer.destroy(); } catch(e) {} };
     </script>
 </body>
 </html>
