@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Vote</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/upeerjs@latest/dist/upeerjs.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         :root {
@@ -97,7 +97,7 @@
 </head>
 <body>
     <div class="container" id="main-container">
-        <!-- ÉCRAN 0 : Saisie du code de session -->
+        <!-- ÉCRAN 0 : Saisie du code -->
         <div id="code-screen" class="card hidden">
             <h1>Rejoindre un vote</h1>
             <p style="margin-bottom: 1rem;">Entrez le code de session fourni par l'administrateur ou scannez le QR Code.</p>
@@ -120,7 +120,7 @@
             <div id="error-box" class="error-box hidden"></div>
         </div>
 
-        <!-- ÉCRAN 2 : Attente avec prévisualisation -->
+        <!-- ÉCRAN 2 : Attente -->
         <div id="waiting-screen" class="card hidden">
             <div class="spinner"></div>
             <h1>En attente du vote</h1>
@@ -175,7 +175,7 @@
             </div>
         </div>
 
-        <!-- ÉCRAN 3b : Vote à choix multiples -->
+        <!-- ÉCRAN 3b : Vote multiple -->
         <div id="vote-multiple-screen" class="card hidden">
             <p class="question" id="vote-multiple-question"></p>
             <div class="info-box">
@@ -195,7 +195,7 @@
             <p>Votre vote a bien été pris en compte. Veuillez patienter en attendant la fin du vote.</p>
         </div>
 
-        <!-- ÉCRAN 5 : Attente des résultats -->
+        <!-- ÉCRAN 5 : Attente résultats -->
         <div id="results-waiting-screen" class="card hidden">
             <h1>Dépouillement en cours</h1>
             <p>Les résultats vont être annoncés par l'administrateur. Veuillez rester attentif.</p>
@@ -212,7 +212,8 @@
         // ============================================
         // CONFIGURATION - DOIT ÊTRE IDENTIQUE À admin.html
         // ============================================
-        const APP_PREFIX = 'vt7k9x2m';
+        const APP_PREFIX = 'vote-mdl-cvl';
+        const CHANNEL_PASSWORD = 'vote-secret-2026';
 
         // ============================================
         // VARIABLES GLOBALES
@@ -237,7 +238,6 @@
         // ============================================
         function init() {
             const params = new URLSearchParams(window.location.search);
-            // Supporte ?s=xxx et ?session=xxx (rétrocompatibilité)
             const codeFromUrl = params.get('s') || params.get('session');
             
             if (!codeFromUrl) {
@@ -338,40 +338,34 @@
                 try { peer.destroy(); } catch(e) {}
             }
             
-            peer = new Peer(sessionId, { 
-    host: 'peerjs.92k.de',   // Serveur alternatif (à vérifier qu'il est actif)
-    port: 443,
-    path: '/',
-    secure: true,
-    debug: 1
-});
+            console.log('Connexion uPeerJS vers:', sessionId);
+            
+            // uPeerJS - la connexion au broker MQTT est automatique
+            peer = new upeerjs.Peer(clientId, { securityKey: CHANNEL_PASSWORD });
             
             peer.on('open', (id) => {
-                console.log('Client PeerJS ouvert avec ID:', id);
-                console.log('Tentative de connexion à:', sessionId);
+                console.log('Client uPeerJS ouvert avec ID:', id);
                 
-                conn = peer.connect(sessionId, { reliable: true });
+                // Se connecter à l'admin via son ID
+                const session = peer.connect(sessionId);
+                conn = session;
                 
                 connectionTimeout = setTimeout(() => {
                     if (!connectionEstablished && !sessionClosed) {
                         console.log('Timeout de connexion à l\'admin');
                         updateStatus('Admin introuvable', false);
-                        if (conn) { try { conn.close(); } catch(e) {} }
                         scheduleReconnect();
                     }
                 }, 8000);
                 
-                conn.on('open', () => {
-                    console.log('Connexion à l\'admin établie');
+                session.on('data', (data) => {
                     connectionEstablished = true;
                     clearTimeout(connectionTimeout);
                     updateStatus('Connecté', true);
-                    conn.send({ type: 'hello' });
+                    handleAdminMessage(data);
                 });
                 
-                conn.on('data', (data) => handleAdminMessage(data));
-                
-                conn.on('close', () => {
+                session.on('close', () => {
                     connectionEstablished = false;
                     if (sessionClosed) return;
                     console.log('Connexion fermée par l\'admin');
@@ -379,7 +373,7 @@
                     scheduleReconnect();
                 });
                 
-                conn.on('error', (err) => {
+                session.on('error', (err) => {
                     connectionEstablished = false;
                     clearTimeout(connectionTimeout);
                     if (sessionClosed) return;
@@ -387,32 +381,23 @@
                     updateStatus('Erreur', false);
                     scheduleReconnect();
                 });
+                
+                // Envoyer hello après un court délai
+                setTimeout(() => {
+                    if (session.open) {
+                        session.send({ type: 'hello' });
+                        connectionEstablished = true;
+                        clearTimeout(connectionTimeout);
+                        updateStatus('Connecté', true);
+                    }
+                }, 500);
             });
             
             peer.on('error', (err) => {
                 if (sessionClosed) return;
-                console.error('Erreur PeerJS:', err);
-                
-                // Si l'ID est déjà pris (cas rare côté client), régénérer
-                if (err.type === 'unavailable-id') {
-                    clientId = 'c-' + Math.random().toString(36).substr(2, 12);
-                }
-                
-                // Ne pas afficher "Erreur réseau" de façon brutale, on retente
-                if (err.type === 'network' || err.type === 'server-error') {
-                    updateStatus('Serveur indisponible', false);
-                } else {
-                    updateStatus('Erreur', false);
-                }
-                
+                console.error('Erreur uPeerJS:', err);
+                updateStatus('Erreur', false);
                 scheduleReconnect();
-            });
-            
-            peer.on('disconnected', () => {
-                if (sessionClosed) return;
-                console.log('Peer déconnecté, tentative de reconnexion...');
-                updateStatus('Reconnexion...', false);
-                try { peer.reconnect(); } catch(e) {}
             });
         }
 
@@ -421,17 +406,13 @@
             if (reconnectInterval) clearInterval(reconnectInterval);
             reconnectInterval = setInterval(() => {
                 if (sessionClosed) { clearInterval(reconnectInterval); return; }
-                if (!conn || !conn.open) {
-                    console.log('Tentative de reconnexion...');
-                    connectToAdmin();
-                } else {
-                    clearInterval(reconnectInterval);
-                }
+                console.log('Tentative de reconnexion...');
+                connectToAdmin();
             }, 3000);
         }
 
         // ============================================
-        // GESTION DES MESSAGES DE L'ADMIN
+        // GESTION DES MESSAGES
         // ============================================
         function handleAdminMessage(data) {
             if (sessionClosed) return;
@@ -549,7 +530,7 @@
         }
 
         // ============================================
-        // AFFICHAGE DES ÉCRANS
+        // AFFICHAGE
         // ============================================
         function showScreen(screenId) {
             const screens = ['code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen'];
