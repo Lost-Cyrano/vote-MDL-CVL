@@ -4,30 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Vote</title>
-    <script src="https://cdn.jsdelivr.net/npm/upeerjs@latest/dist/upeerjs.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="config.js"></script>
     <style>
-        :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --bg: #f8fafc;
-            --card: #ffffff;
-            --text: #1e293b;
-            --text-light: #64748b;
-            --border: #e2e8f0;
-            --success: #10b981;
-            --danger: #ef4444;
-            --pour: #2563eb;
-            --abstention: #ffffff;
-            --contre: #dc2626;
-        }
+        :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --text-light: #64748b; --border: #e2e8f0; --success: #10b981; --danger: #ef4444; --pour: #2563eb; --abstention: #ffffff; --contre: #dc2626; }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
         body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
         .container { width: 100%; max-width: 500px; }
         .container.landscape { max-width: 900px; }
-        .card { background: var(--card); border-radius: 16px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); border: 1px solid var(--border); text-align: center; }
+        .card { background: var(--card); border-radius: 16px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid var(--border); text-align: center; }
         h1 { font-size: 1.3rem; margin-bottom: 0.5rem; }
-        h2 { font-size: 1.1rem; margin-bottom: 1rem; }
         p { color: var(--text-light); font-size: 0.95rem; line-height: 1.5; }
         .question { font-size: 1.15rem; font-weight: 600; color: var(--text); margin-bottom: 1rem; text-align: left; line-height: 1.4; }
         button { background: var(--primary); color: white; border: none; padding: 1rem; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.15s; width: 100%; margin-top: 0.75rem; }
@@ -37,11 +24,9 @@
         .hidden { display: none !important; }
         .spinner { border: 4px solid var(--border); border-top: 4px solid var(--primary); border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; margin: 1.5rem auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
         .code-input { font-size: 2rem; text-align: center; letter-spacing: 0.5rem; text-transform: lowercase; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; width: 100%; margin-bottom: 1rem; font-family: monospace; }
         .code-input:focus { outline: none; border-color: var(--primary); }
         .code-input::placeholder { letter-spacing: 0.5rem; color: #cbd5e1; }
-        
         .option { display: flex; align-items: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 0.6rem; cursor: pointer; transition: all 0.15s; text-align: left; background: var(--card); }
         .option:active { transform: scale(0.98); }
         .option.selected { border-color: var(--primary); background: #eff6ff; }
@@ -53,7 +38,6 @@
         .option.multiple.selected .option-check { border-radius: 6px; }
         .option.multiple.selected .option-check::after { content: '✓'; color: white; font-size: 14px; font-weight: bold; background: none; width: auto; height: auto; }
         .option-text { flex: 1; font-weight: 500; color: var(--text); }
-        
         .vote-row { display: flex; gap: 0.75rem; margin-top: 1rem; }
         .vote-btn { flex: 1; padding: 2rem 1rem; border-radius: 16px; font-size: 1.2rem; font-weight: 700; border: 3px solid transparent; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 140px; color: white; }
         .vote-btn:active { transform: scale(0.97); }
@@ -61,43 +45,27 @@
         .vote-btn.abstention { background: var(--abstention); color: var(--text); border-color: var(--border); }
         .vote-btn.contre { background: var(--contre); }
         .vote-btn .vote-icon { font-size: 2rem; margin-bottom: 0.5rem; }
-        
         .info-box { background: var(--bg); border-radius: 10px; padding: 0.75rem; margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-light); }
         .info-box strong { color: var(--text); }
-        
         .footer-status { margin-top: 1rem; font-size: 0.8rem; color: var(--text-light); display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
         .status-dot.connected { background: var(--success); }
         .error-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 1rem; border-radius: 10px; margin-top: 1rem; font-size: 0.9rem; }
-        
         #qr-reader { width: 100%; border-radius: 12px; overflow: hidden; margin-top: 1rem; }
-        
         .validate-row { display: flex; gap: 0.5rem; margin-top: 1rem; }
         .validate-row button { margin-top: 0; }
         .btn-blank { background: var(--bg); color: var(--text); border: 2px solid var(--border); }
         .btn-blank:hover:not(:disabled) { background: var(--border); }
-        
         .preview-disabled { opacity: 0.3; pointer-events: none; }
         .preview-option { display: flex; align-items: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 0.6rem; background: var(--card); opacity: 0.3; }
         .preview-check { width: 22px; height: 22px; border: 2px solid var(--border); border-radius: 6px; margin-right: 0.75rem; flex-shrink: 0; }
         .preview-text { flex: 1; font-weight: 500; color: var(--text-light); }
-        
-        @media (max-width: 500px) {
-            .vote-btn { padding: 1.5rem 0.5rem; min-height: 120px; font-size: 1rem; }
-            .vote-btn .vote-icon { font-size: 1.5rem; }
-        }
-        @media (max-height: 500px) and (orientation: landscape) {
-            body { padding: 0.5rem; }
-            .card { padding: 1rem; }
-            .vote-btn { min-height: 90px; padding: 1rem 0.5rem; }
-            h1 { font-size: 1.1rem; }
-            .question { font-size: 1rem; }
-        }
+        @media (max-width: 500px) { .vote-btn { padding: 1.5rem 0.5rem; min-height: 120px; font-size: 1rem; } .vote-btn .vote-icon { font-size: 1.5rem; } }
+        @media (max-height: 500px) and (orientation: landscape) { body { padding: 0.5rem; } .card { padding: 1rem; } .vote-btn { min-height: 90px; padding: 1rem 0.5rem; } h1 { font-size: 1.1rem; } .question { font-size: 1rem; } }
     </style>
 </head>
 <body>
     <div class="container" id="main-container">
-        <!-- ÉCRAN 0 : Saisie du code -->
         <div id="code-screen" class="card hidden">
             <h1>Rejoindre un vote</h1>
             <p style="margin-bottom: 1rem;">Entrez le code de session fourni par l'administrateur ou scannez le QR Code.</p>
@@ -108,79 +76,45 @@
             <div id="qr-error" class="error-box hidden"></div>
         </div>
 
-        <!-- ÉCRAN 1 : Chargement -->
         <div id="loading-screen" class="card hidden">
             <div class="spinner"></div>
             <h1>Connexion en cours...</h1>
             <p>Veuillez patienter pendant la connexion à la session de vote.</p>
-            <div class="footer-status">
-                <span class="status-dot" id="status-dot"></span>
-                <span id="status-text">Déconnexion</span>
-            </div>
+            <div class="footer-status"><span class="status-dot" id="status-dot"></span><span id="status-text">Déconnexion</span></div>
             <div id="error-box" class="error-box hidden"></div>
         </div>
 
-        <!-- ÉCRAN 2 : Attente -->
         <div id="waiting-screen" class="card hidden">
             <div class="spinner"></div>
             <h1>En attente du vote</h1>
             <p>Vous êtes bien connecté. Préparez-vous, le vote va bientôt commencer.</p>
-            
             <div id="waiting-preview" style="margin-top: 1.5rem;">
                 <p class="question preview-disabled" id="preview-question">Question à venir...</p>
                 <div id="preview-simple" class="vote-row preview-disabled">
-                    <div class="vote-btn pour" style="pointer-events: none;">
-                        <span class="vote-icon">✓</span>
-                        <span>Pour</span>
-                    </div>
-                    <div class="vote-btn abstention" style="pointer-events: none;">
-                        <span class="vote-icon">○</span>
-                        <span>Abstention</span>
-                    </div>
-                    <div class="vote-btn contre" style="pointer-events: none;">
-                        <span class="vote-icon">✗</span>
-                        <span>Contre</span>
-                    </div>
+                    <div class="vote-btn pour" style="pointer-events: none;"><span class="vote-icon">✓</span><span>Pour</span></div>
+                    <div class="vote-btn abstention" style="pointer-events: none;"><span class="vote-icon">○</span><span>Abstention</span></div>
+                    <div class="vote-btn contre" style="pointer-events: none;"><span class="vote-icon">✗</span><span>Contre</span></div>
                 </div>
                 <div id="preview-multiple" class="hidden">
-                    <div class="info-box preview-disabled">
-                        Sélectionnez jusqu'à <strong>?</strong> option(s). <span>0</span> sélectionnée(s).
-                    </div>
+                    <div class="info-box preview-disabled">Sélectionnez jusqu'à <strong>?</strong> option(s). <span>0</span> sélectionnée(s).</div>
                     <div id="preview-options-container"></div>
                 </div>
             </div>
-            
-            <div class="footer-status">
-                <span class="status-dot connected"></span>
-                <span>Connecté</span>
-            </div>
+            <div class="footer-status"><span class="status-dot connected"></span><span>Connecté</span></div>
         </div>
 
-        <!-- ÉCRAN 3a : Vote simple -->
         <div id="vote-simple-screen" class="card hidden">
             <p class="question" id="vote-simple-question"></p>
             <div class="vote-row">
-                <button class="vote-btn pour" onclick="voteSimple(0)">
-                    <span class="vote-icon">✓</span>
-                    <span>Pour</span>
-                </button>
-                <button class="vote-btn abstention" onclick="voteSimple(1)">
-                    <span class="vote-icon">○</span>
-                    <span>Abstention</span>
-                </button>
-                <button class="vote-btn contre" onclick="voteSimple(2)">
-                    <span class="vote-icon">✗</span>
-                    <span>Contre</span>
-                </button>
+                <button class="vote-btn pour" onclick="voteSimple(0)"><span class="vote-icon">✓</span><span>Pour</span></button>
+                <button class="vote-btn abstention" onclick="voteSimple(1)"><span class="vote-icon">○</span><span>Abstention</span></button>
+                <button class="vote-btn contre" onclick="voteSimple(2)"><span class="vote-icon">✗</span><span>Contre</span></button>
             </div>
         </div>
 
-        <!-- ÉCRAN 3b : Vote multiple -->
         <div id="vote-multiple-screen" class="card hidden">
             <p class="question" id="vote-multiple-question"></p>
-            <div class="info-box">
-                Sélectionnez jusqu'à <strong id="max-choices-display">1</strong> option(s). <span id="selected-count-display">0</span> sélectionnée(s).
-            </div>
+            <div class="info-box">Sélectionnez jusqu'à <strong id="max-choices-display">1</strong> option(s). <span id="selected-count-display">0</span> sélectionnée(s).</div>
             <div id="options-container"></div>
             <div class="validate-row">
                 <button class="btn-blank" onclick="voteBlank()">Vote blanc / Abstention</button>
@@ -188,20 +122,17 @@
             </div>
         </div>
 
-        <!-- ÉCRAN 4 : Vote envoyé -->
         <div id="voted-screen" class="card hidden">
             <div class="spinner"></div>
             <h1>Vote enregistré</h1>
             <p>Votre vote a bien été pris en compte. Veuillez patienter en attendant la fin du vote.</p>
         </div>
 
-        <!-- ÉCRAN 5 : Attente résultats -->
         <div id="results-waiting-screen" class="card hidden">
             <h1>Dépouillement en cours</h1>
             <p>Les résultats vont être annoncés par l'administrateur. Veuillez rester attentif.</p>
         </div>
 
-        <!-- ÉCRAN 6 : Session close -->
         <div id="closed-screen" class="card hidden">
             <h1>Session close</h1>
             <p>La session de vote a été clôturée par l'administrateur. Merci de votre participation.</p>
@@ -209,490 +140,69 @@
     </div>
 
     <script>
-        // ============================================
-        // CONFIGURATION - DOIT ÊTRE IDENTIQUE À admin.html
-        // ============================================
-        const APP_PREFIX = 'vote-mdl-cvl';
-        const CHANNEL_PASSWORD = 'vote-secret-2026';
+        let peer = null, conn = null, sessionId = null, displayCode = null, reconnectInterval = null;
+        let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
+        let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
 
-        // ============================================
-        // VARIABLES GLOBALES
-        // ============================================
-        let peer = null;
-        let conn = null;
-        let sessionId = null;
-        let displayCode = null;
-        let reconnectInterval = null;
-        let currentVote = null;
-        let selectedAnswers = [];
-        let hasVotedThisRound = false;
-        let clientId = null;
-        let sessionClosed = false;
-        let qrScanner = null;
-        let connectionEstablished = false;
-        let pendingVoteDraft = null;
-        let connectionTimeout = null;
-
-        // ============================================
-        // INITIALISATION
-        // ============================================
         function init() {
             const params = new URLSearchParams(window.location.search);
             const codeFromUrl = params.get('s') || params.get('session');
-            
-            if (!codeFromUrl) {
-                showScreen('code-screen');
-                setTimeout(() => document.getElementById('session-code-input').focus(), 100);
-                return;
-            }
-            
+            if (!codeFromUrl) { showScreen('code-screen'); setTimeout(() => document.getElementById('session-code-input').focus(), 100); return; }
             displayCode = codeFromUrl.toLowerCase().trim();
             sessionId = APP_PREFIX + '-' + displayCode;
             startConnection();
         }
-
-        function submitCode() {
-            const input = document.getElementById('session-code-input');
-            const code = input.value.trim().toLowerCase();
-            if (!code) return;
-            
-            displayCode = code;
-            sessionId = APP_PREFIX + '-' + code;
-            
-            const url = new URL(window.location);
-            url.searchParams.set('s', code);
-            window.history.replaceState({}, '', url);
-            
-            startConnection();
-        }
-
-        function startQrScan() {
-            const readerDiv = document.getElementById('qr-reader');
-            const errDiv = document.getElementById('qr-error');
-            errDiv.classList.add('hidden');
-            
-            if (qrScanner) {
-                readerDiv.classList.add('hidden');
-                try { qrScanner.clear(); } catch(e) {}
-                qrScanner = null;
-                return;
-            }
-            
-            readerDiv.classList.remove('hidden');
-            
-            qrScanner = new Html5Qrcode("qr-reader");
-            qrScanner.start(
-                { facingMode: "environment" },
-                { fps: 10, qrbox: { width: 250, height: 250 } },
-                (decodedText) => {
-                    let code = null;
-                    try {
-                        const url = new URL(decodedText);
-                        code = url.searchParams.get('s') || url.searchParams.get('session');
-                    } catch(e) {
-                        code = decodedText.trim().toLowerCase();
-                    }
-                    
-                    if (code) {
-                        qrScanner.stop().then(() => {
-                            readerDiv.classList.add('hidden');
-                            qrScanner = null;
-                            document.getElementById('session-code-input').value = code;
-                            submitCode();
-                        }).catch(() => {
-                            readerDiv.classList.add('hidden');
-                            qrScanner = null;
-                            document.getElementById('session-code-input').value = code;
-                            submitCode();
-                        });
-                    } else {
-                        errDiv.textContent = 'QR Code invalide. Veuillez réessayer.';
-                        errDiv.classList.remove('hidden');
-                    }
-                },
-                () => {}
-            ).catch(err => {
-                errDiv.textContent = 'Impossible d\'accéder à la caméra : ' + err;
-                errDiv.classList.remove('hidden');
-                readerDiv.classList.add('hidden');
-                qrScanner = null;
-            });
-        }
-
-        function startConnection() {
-            if (sessionClosed) return;
-            showScreen('loading-screen');
-            connectToAdmin();
-        }
-
+        function submitCode() { const input = document.getElementById('session-code-input'); const code = input.value.trim().toLowerCase(); if (!code) return; displayCode = code; sessionId = APP_PREFIX + '-' + code; const url = new URL(window.location); url.searchParams.set('s', code); window.history.replaceState({}, '', url); startConnection(); }
+        function startQrScan() { const readerDiv = document.getElementById('qr-reader'); const errDiv = document.getElementById('qr-error'); errDiv.classList.add('hidden'); if (qrScanner) { readerDiv.classList.add('hidden'); try { qrScanner.clear(); } catch(e) {} qrScanner = null; return; } readerDiv.classList.remove('hidden'); qrScanner = new Html5Qrcode("qr-reader"); qrScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, (decodedText) => { let code = null; try { const url = new URL(decodedText); code = url.searchParams.get('s') || url.searchParams.get('session'); } catch(e) { code = decodedText.trim().toLowerCase(); } if (code) { qrScanner.stop().then(() => { readerDiv.classList.add('hidden'); qrScanner = null; document.getElementById('session-code-input').value = code; submitCode(); }).catch(() => { readerDiv.classList.add('hidden'); qrScanner = null; document.getElementById('session-code-input').value = code; submitCode(); }); } else { errDiv.textContent = 'QR Code invalide. Veuillez réessayer.'; errDiv.classList.remove('hidden'); } }, () => {}).catch(err => { errDiv.textContent = 'Impossible d\'accéder à la caméra : ' + err; errDiv.classList.remove('hidden'); readerDiv.classList.add('hidden'); qrScanner = null; }); }
+        function startConnection() { if (sessionClosed) return; showScreen('loading-screen'); connectToAdmin(); }
+        
         function connectToAdmin() {
             if (sessionClosed) return;
-            
             updateStatus('Connexion...', false);
-            
-            if (!clientId) {
-                clientId = 'c-' + Math.random().toString(36).substr(2, 12);
-            }
-            
-            if (peer) {
-                try { peer.destroy(); } catch(e) {}
-            }
-            
-            console.log('Connexion uPeerJS vers:', sessionId);
-            
-            // uPeerJS - la connexion au broker MQTT est automatique
-            peer = new upeerjs.Peer(clientId, { securityKey: CHANNEL_PASSWORD });
-            
+            if (!clientId) clientId = 'c-' + Math.random().toString(36).substr(2, 12);
+            if (peer) { try { peer.destroy(); } catch(e) {} }
+            peer = new Peer(clientId, { debug: 0 });
             peer.on('open', (id) => {
-                console.log('Client uPeerJS ouvert avec ID:', id);
-                
-                // Se connecter à l'admin via son ID
-                const session = peer.connect(sessionId);
-                conn = session;
-                
-                connectionTimeout = setTimeout(() => {
-                    if (!connectionEstablished && !sessionClosed) {
-                        console.log('Timeout de connexion à l\'admin');
-                        updateStatus('Admin introuvable', false);
-                        scheduleReconnect();
-                    }
-                }, 8000);
-                
-                session.on('data', (data) => {
-                    connectionEstablished = true;
-                    clearTimeout(connectionTimeout);
-                    updateStatus('Connecté', true);
-                    handleAdminMessage(data);
-                });
-                
-                session.on('close', () => {
-                    connectionEstablished = false;
-                    if (sessionClosed) return;
-                    console.log('Connexion fermée par l\'admin');
-                    updateStatus('Déconnecté', false);
-                    scheduleReconnect();
-                });
-                
-                session.on('error', (err) => {
-                    connectionEstablished = false;
-                    clearTimeout(connectionTimeout);
-                    if (sessionClosed) return;
-                    console.error('Erreur de connexion:', err);
-                    updateStatus('Erreur', false);
-                    scheduleReconnect();
-                });
-                
-                // Envoyer hello après un court délai
-                setTimeout(() => {
-                    if (session.open) {
-                        session.send({ type: 'hello' });
-                        connectionEstablished = true;
-                        clearTimeout(connectionTimeout);
-                        updateStatus('Connecté', true);
-                    }
-                }, 500);
+                console.log('Client PeerJS ouvert avec ID:', id);
+                conn = peer.connect(sessionId, { reliable: true });
+                connectionTimeout = setTimeout(() => { if (!connectionEstablished && !sessionClosed) { updateStatus('Admin introuvable', false); if (conn) { try { conn.close(); } catch(e) {} } scheduleReconnect(); } }, 8000);
+                conn.on('open', () => { connectionEstablished = true; clearTimeout(connectionTimeout); updateStatus('Connecté', true); conn.send({ type: 'hello' }); });
+                conn.on('data', (data) => handleAdminMessage(data));
+                conn.on('close', () => { connectionEstablished = false; if (sessionClosed) return; updateStatus('Déconnecté', false); scheduleReconnect(); });
+                conn.on('error', (err) => { connectionEstablished = false; clearTimeout(connectionTimeout); if (sessionClosed) return; updateStatus('Erreur', false); scheduleReconnect(); });
             });
-            
-            peer.on('error', (err) => {
-                if (sessionClosed) return;
-                console.error('Erreur uPeerJS:', err);
-                updateStatus('Erreur', false);
-                scheduleReconnect();
-            });
+            peer.on('error', (err) => { if (sessionClosed) return; console.error('Erreur PeerJS:', err); if (err.type === 'unavailable-id') clientId = 'c-' + Math.random().toString(36).substr(2, 12); updateStatus('Erreur', false); scheduleReconnect(); });
+            peer.on('disconnected', () => { if (sessionClosed) return; updateStatus('Reconnexion...', false); try { peer.reconnect(); } catch(e) {} });
         }
-
-        function scheduleReconnect() {
-            if (sessionClosed) return;
-            if (reconnectInterval) clearInterval(reconnectInterval);
-            reconnectInterval = setInterval(() => {
-                if (sessionClosed) { clearInterval(reconnectInterval); return; }
-                console.log('Tentative de reconnexion...');
-                connectToAdmin();
-            }, 3000);
-        }
-
-        // ============================================
-        // GESTION DES MESSAGES
-        // ============================================
+        function scheduleReconnect() { if (sessionClosed) return; if (reconnectInterval) clearInterval(reconnectInterval); reconnectInterval = setInterval(() => { if (sessionClosed) { clearInterval(reconnectInterval); return; } if (!conn || !conn.open) { connectToAdmin(); } else { clearInterval(reconnectInterval); } }, 3000); }
+        
         function handleAdminMessage(data) {
             if (sessionClosed) return;
-            console.log('Message reçu:', data);
-            
             switch(data.type) {
-                case 'new_vote':
-                    currentVote = data.vote;
-                    hasVotedThisRound = false;
-                    selectedAnswers = [];
-                    showVoteScreen();
-                    break;
-                    
-                case 'results':
-                    showScreen('results-waiting-screen');
-                    break;
-                    
-                case 'reset':
-                    currentVote = null;
-                    hasVotedThisRound = false;
-                    selectedAnswers = [];
-                    pendingVoteDraft = null;
-                    resetWaitingPreview();
-                    showScreen('waiting-screen');
-                    break;
-                    
-                case 'close':
-                    sessionClosed = true;
-                    if (reconnectInterval) clearInterval(reconnectInterval);
-                    if (connectionTimeout) clearTimeout(connectionTimeout);
-                    if (qrScanner) { try { qrScanner.stop(); } catch(e) {} }
-                    if (conn) { try { conn.close(); } catch(e) {} }
-                    if (peer) { try { peer.destroy(); } catch(e) {} }
-                    showScreen('closed-screen');
-                    break;
-                    
-                case 'state':
-                    if (data.state === 'voting' && data.vote) {
-                        currentVote = data.vote;
-                        if (data.hasVoted) {
-                            hasVotedThisRound = true;
-                            showScreen('voted-screen');
-                        } else {
-                            showVoteScreen();
-                        }
-                    } else if (data.state === 'results') {
-                        showScreen('results-waiting-screen');
-                    } else {
-                        showScreen('waiting-screen');
-                    }
-                    break;
-                    
-                case 'draft':
-                    pendingVoteDraft = data.draft;
-                    updateWaitingPreview(data.draft);
-                    break;
-                    
-                case 'draft_cancelled':
-                    pendingVoteDraft = null;
-                    resetWaitingPreview();
-                    break;
+                case 'new_vote': currentVote = data.vote; hasVotedThisRound = false; selectedAnswers = []; showVoteScreen(); break;
+                case 'results': showScreen('results-waiting-screen'); break;
+                case 'reset': currentVote = null; hasVotedThisRound = false; selectedAnswers = []; pendingVoteDraft = null; resetWaitingPreview(); showScreen('waiting-screen'); break;
+                case 'close': sessionClosed = true; if (reconnectInterval) clearInterval(reconnectInterval); if (connectionTimeout) clearTimeout(connectionTimeout); if (qrScanner) { try { qrScanner.stop(); } catch(e) {} } if (conn) { try { conn.close(); } catch(e) {} } if (peer) { try { peer.destroy(); } catch(e) {} } showScreen('closed-screen'); break;
+                case 'state': if (data.state === 'voting' && data.vote) { currentVote = data.vote; if (data.hasVoted) { hasVotedThisRound = true; showScreen('voted-screen'); } else { showVoteScreen(); } } else if (data.state === 'results') { showScreen('results-waiting-screen'); } else { showScreen('waiting-screen'); } break;
+                case 'draft': pendingVoteDraft = data.draft; updateWaitingPreview(data.draft); break;
+                case 'draft_cancelled': pendingVoteDraft = null; resetWaitingPreview(); break;
             }
         }
-
-        // ============================================
-        // PRÉVISUALISATION
-        // ============================================
-        function updateWaitingPreview(draft) {
-            const previewQuestion = document.getElementById('preview-question');
-            const previewSimple = document.getElementById('preview-simple');
-            const previewMultiple = document.getElementById('preview-multiple');
-            const previewOptionsContainer = document.getElementById('preview-options-container');
-            
-            if (!draft) {
-                resetWaitingPreview();
-                return;
-            }
-            
-            previewQuestion.textContent = draft.question || 'Question en cours de rédaction...';
-            
-            if (draft.mode === 'simple') {
-                previewSimple.classList.remove('hidden');
-                previewMultiple.classList.add('hidden');
-            } else if (draft.mode === 'multiple') {
-                previewSimple.classList.add('hidden');
-                previewMultiple.classList.remove('hidden');
-                
-                const maxDisplay = previewMultiple.querySelector('.info-box strong');
-                if (maxDisplay) maxDisplay.textContent = draft.maxChoices || '?';
-                
-                previewOptionsContainer.innerHTML = '';
-                if (draft.options && draft.options.length > 0) {
-                    draft.options.forEach(opt => {
-                        if (opt.trim()) {
-                            const div = document.createElement('div');
-                            div.className = 'preview-option';
-                            div.innerHTML = `
-                                <div class="preview-check"></div>
-                                <div class="preview-text">${escapeHtml(opt)}</div>
-                            `;
-                            previewOptionsContainer.appendChild(div);
-                        }
-                    });
-                } else {
-                    previewOptionsContainer.innerHTML = '<p style="color: var(--text-light); font-size: 0.85rem; text-align: center; padding: 0.5rem;">Options en cours de rédaction...</p>';
-                }
-            }
-        }
+        function updateWaitingPreview(draft) { const previewQuestion = document.getElementById('preview-question'); const previewSimple = document.getElementById('preview-simple'); const previewMultiple = document.getElementById('preview-multiple'); const previewOptionsContainer = document.getElementById('preview-options-container'); if (!draft) { resetWaitingPreview(); return; } previewQuestion.textContent = draft.question || 'Question en cours de rédaction...'; if (draft.mode === 'simple') { previewSimple.classList.remove('hidden'); previewMultiple.classList.add('hidden'); } else if (draft.mode === 'multiple') { previewSimple.classList.add('hidden'); previewMultiple.classList.remove('hidden'); const maxDisplay = previewMultiple.querySelector('.info-box strong'); if (maxDisplay) maxDisplay.textContent = draft.maxChoices || '?'; previewOptionsContainer.innerHTML = ''; if (draft.options && draft.options.length > 0) { draft.options.forEach(opt => { if (opt.trim()) { const div = document.createElement('div'); div.className = 'preview-option'; div.innerHTML = `<div class="preview-check"></div><div class="preview-text">${escapeHtml(opt)}</div>`; previewOptionsContainer.appendChild(div); } }); } else { previewOptionsContainer.innerHTML = '<p style="color: var(--text-light); font-size: 0.85rem; text-align: center; padding: 0.5rem;">Options en cours de rédaction...</p>'; } } }
+        function resetWaitingPreview() { document.getElementById('preview-question').textContent = 'Question à venir...'; document.getElementById('preview-simple').classList.remove('hidden'); document.getElementById('preview-multiple').classList.add('hidden'); document.getElementById('preview-options-container').innerHTML = ''; }
+        function showScreen(screenId) { const screens = ['code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen']; screens.forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', id !== screenId); }); const container = document.getElementById('main-container'); container.classList.toggle('landscape', screenId === 'vote-simple-screen'); }
+        function showVoteScreen() { if (!currentVote) return; if (currentVote.mode === 'simple') { document.getElementById('vote-simple-question').textContent = currentVote.question; showScreen('vote-simple-screen'); } else { document.getElementById('vote-multiple-question').textContent = currentVote.question; document.getElementById('max-choices-display').textContent = currentVote.maxChoices; document.getElementById('selected-count-display').textContent = '0'; const container = document.getElementById('options-container'); container.innerHTML = ''; currentVote.options.forEach((opt, index) => { const div = document.createElement('div'); div.className = 'option multiple'; div.dataset.index = index; div.onclick = () => toggleOption(index, div); div.innerHTML = `<div class="option-check"></div><div class="option-text">${escapeHtml(opt)}</div>`; container.appendChild(div); }); updateMultipleUI(); showScreen('vote-multiple-screen'); } }
+        function toggleOption(index, element) { if (element.classList.contains('dimmed')) return; const pos = selectedAnswers.indexOf(index); if (pos > -1) { selectedAnswers.splice(pos, 1); element.classList.remove('selected'); } else { if (selectedAnswers.length >= currentVote.maxChoices) { const firstIdx = selectedAnswers.shift(); document.querySelectorAll('.option').forEach(el => { if (parseInt(el.dataset.index) === firstIdx) el.classList.remove('selected'); }); } selectedAnswers.push(index); element.classList.add('selected'); } updateMultipleUI(); }
+        function updateMultipleUI() { const count = selectedAnswers.length; const max = currentVote.maxChoices; document.getElementById('selected-count-display').textContent = count; document.querySelectorAll('.option').forEach(el => { const idx = parseInt(el.dataset.index); const isSelected = selectedAnswers.includes(idx); if (count >= max && !isSelected) el.classList.add('dimmed'); else el.classList.remove('dimmed'); }); }
+        function voteSimple(index) { if (!conn || !conn.open) { alert('Connexion perdue.'); return; } conn.send({ type: 'vote', answers: [index] }); hasVotedThisRound = true; showScreen('voted-screen'); }
+        function submitMultiple() { if (!conn || !conn.open) { alert('Connexion perdue.'); return; } conn.send({ type: 'vote', answers: selectedAnswers }); hasVotedThisRound = true; showScreen('voted-screen'); }
+        function voteBlank() { if (!conn || !conn.open) { alert('Connexion perdue.'); return; } conn.send({ type: 'vote', answers: [] }); hasVotedThisRound = true; showScreen('voted-screen'); }
+        function updateStatus(text, connected) { const statusText = document.getElementById('status-text'); const statusDot = document.getElementById('status-dot'); if (statusText) statusText.textContent = text; if (statusDot) statusDot.classList.toggle('connected', connected); }
+        function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
         
-        function resetWaitingPreview() {
-            document.getElementById('preview-question').textContent = 'Question à venir...';
-            document.getElementById('preview-simple').classList.remove('hidden');
-            document.getElementById('preview-multiple').classList.add('hidden');
-            document.getElementById('preview-options-container').innerHTML = '';
-        }
-
-        // ============================================
-        // AFFICHAGE
-        // ============================================
-        function showScreen(screenId) {
-            const screens = ['code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen'];
-            screens.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.classList.toggle('hidden', id !== screenId);
-            });
-            
-            const container = document.getElementById('main-container');
-            container.classList.toggle('landscape', screenId === 'vote-simple-screen');
-        }
-
-        function showVoteScreen() {
-            if (!currentVote) return;
-            
-            if (currentVote.mode === 'simple') {
-                document.getElementById('vote-simple-question').textContent = currentVote.question;
-                showScreen('vote-simple-screen');
-            } else {
-                document.getElementById('vote-multiple-question').textContent = currentVote.question;
-                document.getElementById('max-choices-display').textContent = currentVote.maxChoices;
-                document.getElementById('selected-count-display').textContent = '0';
-                
-                const container = document.getElementById('options-container');
-                container.innerHTML = '';
-                
-                currentVote.options.forEach((opt, index) => {
-                    const div = document.createElement('div');
-                    div.className = 'option multiple';
-                    div.dataset.index = index;
-                    div.onclick = () => toggleOption(index, div);
-                    div.innerHTML = `
-                        <div class="option-check"></div>
-                        <div class="option-text">${escapeHtml(opt)}</div>
-                    `;
-                    container.appendChild(div);
-                });
-                
-                updateMultipleUI();
-                showScreen('vote-multiple-screen');
-            }
-        }
-
-        function toggleOption(index, element) {
-            if (element.classList.contains('dimmed')) return;
-            
-            const pos = selectedAnswers.indexOf(index);
-            if (pos > -1) {
-                selectedAnswers.splice(pos, 1);
-                element.classList.remove('selected');
-            } else {
-                if (selectedAnswers.length >= currentVote.maxChoices) {
-                    const firstIdx = selectedAnswers.shift();
-                    document.querySelectorAll('.option').forEach(el => {
-                        if (parseInt(el.dataset.index) === firstIdx) {
-                            el.classList.remove('selected');
-                        }
-                    });
-                }
-                selectedAnswers.push(index);
-                element.classList.add('selected');
-            }
-            updateMultipleUI();
-        }
-
-        function updateMultipleUI() {
-            const count = selectedAnswers.length;
-            const max = currentVote.maxChoices;
-            document.getElementById('selected-count-display').textContent = count;
-            
-            document.querySelectorAll('.option').forEach(el => {
-                const idx = parseInt(el.dataset.index);
-                const isSelected = selectedAnswers.includes(idx);
-                if (count >= max && !isSelected) {
-                    el.classList.add('dimmed');
-                } else {
-                    el.classList.remove('dimmed');
-                }
-            });
-        }
-
-        // ============================================
-        // ENVOI DU VOTE
-        // ============================================
-        function voteSimple(index) {
-            if (!conn || !conn.open) {
-                alert('Connexion perdue. Veuillez patienter...');
-                return;
-            }
-            
-            conn.send({
-                type: 'vote',
-                answers: [index]
-            });
-            
-            hasVotedThisRound = true;
-            showScreen('voted-screen');
-        }
-
-        function submitMultiple() {
-            if (!conn || !conn.open) {
-                alert('Connexion perdue. Veuillez patienter...');
-                return;
-            }
-            
-            conn.send({
-                type: 'vote',
-                answers: selectedAnswers
-            });
-            
-            hasVotedThisRound = true;
-            showScreen('voted-screen');
-        }
-
-        function voteBlank() {
-            if (!conn || !conn.open) {
-                alert('Connexion perdue. Veuillez patienter...');
-                return;
-            }
-            
-            conn.send({
-                type: 'vote',
-                answers: []
-            });
-            
-            hasVotedThisRound = true;
-            showScreen('voted-screen');
-        }
-
-        // ============================================
-        // UTILITAIRES
-        // ============================================
-        function updateStatus(text, connected) {
-            const statusText = document.getElementById('status-text');
-            const statusDot = document.getElementById('status-dot');
-            if (statusText) statusText.textContent = text;
-            if (statusDot) statusDot.classList.toggle('connected', connected);
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // ============================================
-        // DÉMARRAGE
-        // ============================================
         window.onload = init;
-
-        document.addEventListener('visibilitychange', () => {
-            if (sessionClosed) return;
-            if (!document.hidden && (!conn || !conn.open)) {
-                console.log('Retour sur la page, reconnexion...');
-                connectToAdmin();
-            }
-        });
-
-        window.onbeforeunload = () => {
-            if (reconnectInterval) clearInterval(reconnectInterval);
-            if (connectionTimeout) clearTimeout(connectionTimeout);
-        };
+        document.addEventListener('visibilitychange', () => { if (sessionClosed) return; if (!document.hidden && (!conn || !conn.open)) connectToAdmin(); });
+        window.onbeforeunload = () => { if (reconnectInterval) clearInterval(reconnectInterval); if (connectionTimeout) clearTimeout(connectionTimeout); };
     </script>
 </body>
 </html>
