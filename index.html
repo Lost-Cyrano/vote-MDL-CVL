@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Vote</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗳️</text></svg>">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="config.js"></script>
@@ -141,42 +142,100 @@
 
     <script>
         let peer = null, conn = null, sessionId = null, displayCode = null, reconnectInterval = null;
-        let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
-        let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
+let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
+let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
+let reconnectAttempts = 0;
 
-        function init() {
-            const params = new URLSearchParams(window.location.search);
-            const codeFromUrl = params.get('s') || params.get('session');
-            if (!codeFromUrl) { showScreen('code-screen'); setTimeout(() => document.getElementById('session-code-input').focus(), 100); return; }
-            displayCode = codeFromUrl.toLowerCase().trim();
-            sessionId = APP_PREFIX + '-' + displayCode;
-            startConnection();
-        }
-        function submitCode() { const input = document.getElementById('session-code-input'); const code = input.value.trim().toLowerCase(); if (!code) return; displayCode = code; sessionId = APP_PREFIX + '-' + code; const url = new URL(window.location); url.searchParams.set('s', code); window.history.replaceState({}, '', url); startConnection(); }
-        function startQrScan() { const readerDiv = document.getElementById('qr-reader'); const errDiv = document.getElementById('qr-error'); errDiv.classList.add('hidden'); if (qrScanner) { readerDiv.classList.add('hidden'); try { qrScanner.clear(); } catch(e) {} qrScanner = null; return; } readerDiv.classList.remove('hidden'); qrScanner = new Html5Qrcode("qr-reader"); qrScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, (decodedText) => { let code = null; try { const url = new URL(decodedText); code = url.searchParams.get('s') || url.searchParams.get('session'); } catch(e) { code = decodedText.trim().toLowerCase(); } if (code) { qrScanner.stop().then(() => { readerDiv.classList.add('hidden'); qrScanner = null; document.getElementById('session-code-input').value = code; submitCode(); }).catch(() => { readerDiv.classList.add('hidden'); qrScanner = null; document.getElementById('session-code-input').value = code; submitCode(); }); } else { errDiv.textContent = 'QR Code invalide. Veuillez réessayer.'; errDiv.classList.remove('hidden'); } }, () => {}).catch(err => { errDiv.textContent = 'Impossible d\'accéder à la caméra : ' + err; errDiv.classList.remove('hidden'); readerDiv.classList.add('hidden'); qrScanner = null; }); }
-        function startConnection() { if (sessionClosed) return; showScreen('loading-screen'); connectToAdmin(); }
+function connectToAdmin() {
+    if (sessionClosed) return;
+    updateStatus('Connexion...', false);
+    if (!clientId) clientId = 'c-' + Math.random().toString(36).substr(2, 12);
+    if (peer) { try { peer.destroy(); } catch(e) {} }
+    
+    try {
+        peer = new Peer(clientId, PEER_CONFIG);
+    } catch(e) {
+        console.error('Erreur création PeerJS client:', e);
+        scheduleReconnect();
+        return;
+    }
+    
+    peer.on('open', (id) => {
+        console.log('Client PeerJS ouvert:', id);
+        conn = peer.connect(sessionId, { reliable: true });
         
-        function connectToAdmin() {
+        connectionTimeout = setTimeout(() => {
+            if (!connectionEstablished && !sessionClosed) {
+                updateStatus('Admin introuvable', false);
+                if (conn) { try { conn.close(); } catch(e) {} }
+                scheduleReconnect();
+            }
+        }, 8000);
+        
+        conn.on('open', () => {
+            connectionEstablished = true;
+            reconnectAttempts = 0;
+            clearTimeout(connectionTimeout);
+            updateStatus('Connecté', true);
+            try { conn.send({ type: 'hello' }); } catch(e) {}
+        });
+        
+        conn.on('data', (data) => handleAdminMessage(data));
+        
+        conn.on('close', () => {
+            connectionEstablished = false;
             if (sessionClosed) return;
-            updateStatus('Connexion...', false);
-            if (!clientId) clientId = 'c-' + Math.random().toString(36).substr(2, 12);
-            if (peer) { try { peer.destroy(); } catch(e) {} }
-            peer = new Peer(clientId, { debug: 0 });
-            peer.on('open', (id) => {
-                console.log('Client PeerJS ouvert avec ID:', id);
-                conn = peer.connect(sessionId, { reliable: true });
-                connectionTimeout = setTimeout(() => { if (!connectionEstablished && !sessionClosed) { updateStatus('Admin introuvable', false); if (conn) { try { conn.close(); } catch(e) {} } scheduleReconnect(); } }, 8000);
-                conn.on('open', () => { connectionEstablished = true; clearTimeout(connectionTimeout); updateStatus('Connecté', true); conn.send({ type: 'hello' }); });
-                conn.on('data', (data) => handleAdminMessage(data));
-                conn.on('close', () => { connectionEstablished = false; if (sessionClosed) return; updateStatus('Déconnecté', false); scheduleReconnect(); });
-                conn.on('error', (err) => { connectionEstablished = false; clearTimeout(connectionTimeout); if (sessionClosed) return; updateStatus('Erreur', false); scheduleReconnect(); });
-            });
-            peer.on('error', (err) => { if (sessionClosed) return; console.error('Erreur PeerJS:', err); if (err.type === 'unavailable-id') clientId = 'c-' + Math.random().toString(36).substr(2, 12); updateStatus('Erreur', false); scheduleReconnect(); });
-            peer.on('disconnected', () => { if (sessionClosed) return; updateStatus('Reconnexion...', false); try { peer.reconnect(); } catch(e) {} });
+            updateStatus('Déconnecté', false);
+            scheduleReconnect();
+        });
+        
+        conn.on('error', (err) => {
+            console.warn('Erreur connexion:', err);
+            connectionEstablished = false;
+            clearTimeout(connectionTimeout);
+            if (sessionClosed) return;
+            updateStatus('Erreur', false);
+            scheduleReconnect();
+        });
+    });
+    
+    peer.on('error', (err) => {
+        if (sessionClosed) return;
+        console.warn('Erreur PeerJS:', err.type, err.message);
+        if (err.type === 'unavailable-id') {
+            clientId = 'c-' + Math.random().toString(36).substr(2, 12);
         }
-        function scheduleReconnect() { if (sessionClosed) return; if (reconnectInterval) clearInterval(reconnectInterval); reconnectInterval = setInterval(() => { if (sessionClosed) { clearInterval(reconnectInterval); return; } if (!conn || !conn.open) { connectToAdmin(); } else { clearInterval(reconnectInterval); } }, 3000); }
+        updateStatus('Erreur', false);
+        scheduleReconnect();
+    });
+    
+    peer.on('disconnected', () => {
+        if (sessionClosed) return;
+        updateStatus('Reconnexion...', false);
+        try { peer.reconnect(); } catch(e) { scheduleReconnect(); }
+    });
+}
+
+function scheduleReconnect() {
+    if (sessionClosed) return;
+    if (reconnectInterval) clearInterval(reconnectInterval);
+    reconnectAttempts++;
+    const delay = Math.min(2000 * reconnectAttempts, 10000);
+    reconnectInterval = setInterval(() => {
+        if (sessionClosed) { clearInterval(reconnectInterval); return; }
+        if (!conn || !conn.open) {
+            clearInterval(reconnectInterval);
+            connectToAdmin();
+        } else {
+            clearInterval(reconnectInterval);
+        }
+    }, delay);
+}
         
         function handleAdminMessage(data) {
+            case 'ping': 
+    // Juste un ping pour vérifier la connexion
+    break;
             if (sessionClosed) return;
             switch(data.type) {
                 case 'new_vote': currentVote = data.vote; hasVotedThisRound = false; selectedAnswers = []; showVoteScreen(); break;
