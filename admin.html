@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Administration - Vote</title>
-    <!-- Bibliothèques externes via CDN -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -23,36 +22,53 @@
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 1rem; }
-        .container { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 1rem; }
+        .container { width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 1rem; }
         .card { background: var(--card); border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); }
         h1 { font-size: 1.5rem; margin-bottom: 1rem; text-align: center; }
         h2 { font-size: 1.2rem; margin-bottom: 0.75rem; }
         p { color: var(--text-light); font-size: 0.9rem; line-height: 1.4; }
         button { background: var(--primary); color: white; border: none; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background 0.2s; width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
-        button:hover { background: var(--primary-hover); }
+        button:hover:not(:disabled) { background: var(--primary-hover); }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         button.secondary { background: var(--text-light); }
-        button.secondary:hover { background: #475569; }
+        button.secondary:hover:not(:disabled) { background: #475569; }
         button.danger { background: var(--danger); }
-        button.danger:hover { background: #dc2626; }
+        button.danger:hover:not(:disabled) { background: #dc2626; }
         button.success { background: var(--success); }
-        button.success:hover { background: #059669; }
+        button.success:hover:not(:disabled) { background: #059669; }
         button.warning { background: var(--warning); color: #1e293b; }
-        button.warning:hover { background: #d97706; }
+        button.warning:hover:not(:disabled) { background: #d97706; }
         button.outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-        button.outline:hover { background: var(--bg); }
+        button.outline:hover:not(:disabled) { background: var(--bg); }
         input, textarea, select { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; margin-bottom: 0.75rem; background: var(--bg); color: var(--text); }
         input:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary); }
         .row { display: flex; gap: 0.5rem; align-items: center; }
         .row > * { flex: 1; }
         .flex-between { display: flex; justify-content: space-between; align-items: center; }
-        .qr-container { display: flex; justify-content: center; padding: 1rem; background: white; border-radius: 8px; margin: 1rem 0; }
-        #qrcode { display: flex; justify-content: center; }
-        #qrcode img { max-width: 200px; height: auto; }
         .hidden { display: none !important; }
+        
+        /* Section session (QR + code) */
+        .session-layout { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; justify-content: center; }
+        .qr-box { display: flex; flex-direction: column; align-items: center; }
+        #qrcode { display: flex; justify-content: center; padding: 0.5rem; background: white; border-radius: 8px; }
+        #qrcode img { max-width: 180px; height: auto; }
+        .code-box { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; min-width: 180px; }
+        .code-label { font-size: 0.85rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem; }
+        .code-display { font-size: 4rem; font-weight: 800; font-family: monospace; color: var(--primary); letter-spacing: 0.15em; line-height: 1; margin-bottom: 0.5rem; }
+        .code-hint { font-size: 0.8rem; color: var(--text-light); text-align: center; }
+        
+        /* Onglets */
+        .tabs { display: flex; gap: 0.5rem; border-bottom: 2px solid var(--border); margin-bottom: 1rem; }
+        .tab { flex: 1; padding: 0.75rem 1rem; background: transparent; border: none; border-bottom: 3px solid transparent; color: var(--text-light); font-weight: 600; cursor: pointer; border-radius: 0; margin-bottom: -2px; }
+        .tab:hover { background: var(--bg); color: var(--text); }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
         .vote-option { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
         .vote-option input[type="text"] { margin-bottom: 0; flex: 1; }
         .vote-option button { width: auto; padding: 0.5rem; background: var(--danger); }
+        
         .result-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border); }
         .result-item:last-child { border-bottom: none; }
         .result-item.winner { background: #ecfdf5; border-left: 4px solid var(--success); }
@@ -65,117 +81,149 @@
         .stat { text-align: center; padding: 0.75rem; background: var(--bg); border-radius: 8px; }
         .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
         .stat-label { font-size: 0.8rem; color: var(--text-light); }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
-        @media (max-width: 500px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+        @media (max-width: 500px) { .grid-3 { grid-template-columns: 1fr; } }
+        
         .history-item { padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer; }
         .history-item:hover { background: var(--bg); }
         .history-detail { padding: 0.75rem; background: var(--bg); border-radius: 8px; margin-top: 0.5rem; font-size: 0.85rem; }
+        
         .loading-spinner { border: 3px solid var(--border); border-top: 3px solid var(--primary); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; margin: 0 auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--text); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; font-size: 0.9rem; z-index: 1000; opacity: 0; transition: opacity 0.3s; }
+        .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--text); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; font-size: 0.9rem; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
         .toast.show { opacity: 1; }
         .skip-btn { background: transparent; border: none; color: var(--text-light); font-size: 0.75rem; cursor: pointer; text-decoration: underline; padding: 0.25rem; width: auto; }
         .skip-btn:hover { color: var(--danger); background: transparent; }
+        
+        .closed-screen { text-align: center; padding: 3rem 1rem; }
+        .closed-screen h1 { font-size: 1.8rem; color: var(--danger); margin-bottom: 1rem; }
+        .closed-screen p { font-size: 1rem; margin-bottom: 1.5rem; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Administration du Vote</h1>
-
-        <!-- ÉTAPE 1 : Connexion et QR Code -->
-        <div id="setup-section" class="card">
-            <h2>1. Connecter les participants</h2>
-            <p>Partagez ce QR Code ou ce lien pour que les participants rejoignent la session.</p>
-            <div class="qr-container">
-                <div id="qrcode"></div>
-            </div>
-            <div class="row" style="margin-top: 0.5rem;">
-                <input type="text" id="session-link" readonly value="Génération...">
-                <button class="outline" onclick="copyLink()" style="width: auto; white-space: nowrap;">Copier</button>
-            </div>
-            <div class="flex-between" style="margin-top: 1rem;">
-                <span>Connectés : <strong id="connected-count">0</strong></span>
-                <span id="connection-status" class="badge warning">En attente...</span>
-            </div>
+        <!-- ÉCRAN DE CLÔTURE (remplace tout le reste) -->
+        <div id="closed-view" class="card closed-screen hidden">
+            <h1>Session close</h1>
+            <p>La session de vote a été clôturée et tous les participants ont été déconnectés.</p>
+            <p style="margin-top: 1rem;">Rechargez la page pour créer une nouvelle session de vote.</p>
+            <button onclick="window.location.reload()" style="margin-top: 1.5rem;">Recharger la page</button>
         </div>
 
-        <!-- ÉTAPE 2 : Création du vote -->
-        <div id="create-section" class="card hidden">
-            <h2>2. Créer un vote</h2>
-            <label>Question</label>
-            <textarea id="question-input" rows="2" placeholder="Ex: Êtes-vous favorables à la création d'une commission..."></textarea>
-            
-            <label>Mode de réponse</label>
-            <select id="vote-mode" onchange="toggleVoteMode()">
-                <option value="simple">Simple (Oui / Blanc / Non)</option>
-                <option value="multiple">Choix multiples</option>
-            </select>
+        <!-- VUE PRINCIPALE (masquée après clôture) -->
+        <div id="main-view">
+            <h1>Administration du Vote</h1>
 
-            <div id="simple-options" class="hidden">
-                <p style="font-size: 0.85rem; color: var(--text-light);">Les options par défaut seront : Oui, Abstention/Blanc, Non.</p>
-            </div>
-
-            <div id="multiple-options" class="hidden">
-                <label>Nombre de choix maximum par votant</label>
-                <input type="number" id="max-choices" value="1" min="1" max="20">
-                <label>Options (candidats)</label>
-                <div id="options-list"></div>
-                <button class="outline" onclick="addOption()" style="margin-top: 0.5rem;">+ Ajouter une option</button>
-            </div>
-
-            <button onclick="startVote()" style="margin-top: 1rem;">Lancer le vote</button>
-        </div>
-
-        <!-- ÉTAPE 3 : Vote en cours -->
-        <div id="vote-section" class="card hidden">
-            <h2>Vote en cours</h2>
-            <p id="current-question-display" style="font-weight: 600; margin-bottom: 0.5rem;"></p>
-            <div class="flex-between">
-                <span>Votants restants : <strong id="remaining-voters">0</strong></span>
-                <button class="skip-btn" onclick="skipWaiting()">Sauter l'attente</button>
-            </div>
-            <div class="stat" style="margin-top: 1rem;">
-                <div class="stat-value" id="votes-received">0</div>
-                <div class="stat-label">Votes reçus</div>
-            </div>
-            <button class="secondary" onclick="showResults()" style="margin-top: 1rem;">Afficher les résultats maintenant</button>
-        </div>
-
-        <!-- ÉTAPE 4 : Résultats -->
-        <div id="results-section" class="card hidden">
-            <h2>Résultats</h2>
-            <p id="result-question" style="font-weight: 600; margin-bottom: 0.5rem;"></p>
-            <div class="grid-3" style="margin-bottom: 1rem;">
-                <div class="stat">
-                    <div class="stat-value" id="total-votes">0</div>
-                    <div class="stat-label">Suffrages exprimés</div>
+            <!-- SECTION SESSION (toujours visible) -->
+            <div class="card">
+                <div class="flex-between" style="margin-bottom: 1rem;">
+                    <h2 style="margin: 0;">Session de vote</h2>
+                    <span id="connection-status" class="badge warning">En attente...</span>
                 </div>
-                <div class="stat">
-                    <div class="stat-value" id="absolute-majority">0</div>
-                    <div class="stat-label">Majorité absolue</div>
+                
+                <div class="session-layout">
+                    <div class="qr-box">
+                        <div id="qrcode"></div>
+                    </div>
+                    <div class="code-box">
+                        <div class="code-label">Code de session</div>
+                        <div class="code-display" id="code-display">----</div>
+                        <div class="code-hint">À saisir sur la page de vote</div>
+                    </div>
                 </div>
-                <div class="stat">
-                    <div class="stat-value" id="total-voters">0</div>
-                    <div class="stat-label">Votants</div>
+                
+                <div class="row" style="margin-top: 1rem;">
+                    <input type="text" id="session-link" readonly value="Génération...">
+                    <button class="outline" onclick="copyLink()" style="width: auto; white-space: nowrap;">Copier</button>
+                </div>
+                
+                <div class="flex-between" style="margin-top: 1rem;">
+                    <span>Connectés : <strong id="connected-count">0</strong></span>
                 </div>
             </div>
-            <div id="results-list"></div>
-            <button class="success" onclick="newVote()" style="margin-top: 1rem;">Créer un nouveau vote</button>
-        </div>
 
-        <!-- ÉTAPE 5 : Historique et clôture -->
-        <div id="history-section" class="card hidden">
-            <h2>Historique de la session</h2>
-            <div id="history-list"></div>
-            <div class="row" style="margin-top: 1rem;">
-                <button class="outline" onclick="exportPDF()">Télécharger en PDF</button>
-                <button class="danger" onclick="closeSession()">Clore la session</button>
+            <!-- ONGLETS -->
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('create')">Créer un vote</button>
+                <button class="tab" onclick="switchTab('history')">Historique</button>
+            </div>
+
+            <!-- ONGLET CRÉATION -->
+            <div id="tab-create" class="tab-content active">
+                <!-- Formulaire de création -->
+                <div id="create-section" class="card">
+                    <h2>Nouveau vote</h2>
+                    <label>Question</label>
+                    <textarea id="question-input" rows="2" placeholder="Ex: Êtes-vous favorables à la création d'une commission..."></textarea>
+                    
+                    <label>Mode de réponse</label>
+                    <select id="vote-mode" onchange="toggleVoteMode()">
+                        <option value="simple">Simple (Oui / Blanc / Non)</option>
+                        <option value="multiple">Choix multiples</option>
+                    </select>
+
+                    <div id="simple-options" class="hidden">
+                        <p style="font-size: 0.85rem; color: var(--text-light);">Options : Pour, Abstention/Blanc, Contre.</p>
+                    </div>
+
+                    <div id="multiple-options" class="hidden">
+                        <label>Nombre de choix maximum par votant</label>
+                        <input type="number" id="max-choices" value="1" min="1" max="20">
+                        <label>Options (candidats)</label>
+                        <div id="options-list"></div>
+                        <button class="outline" onclick="addOption()" style="margin-top: 0.5rem;">+ Ajouter une option</button>
+                    </div>
+
+                    <button onclick="startVote()" style="margin-top: 1rem;">Lancer le vote</button>
+                </div>
+
+                <!-- Vote en cours -->
+                <div id="vote-section" class="card hidden">
+                    <h2>Vote en cours</h2>
+                    <p id="current-question-display" style="font-weight: 600; margin-bottom: 0.5rem;"></p>
+                    <div class="flex-between">
+                        <span>Votants restants : <strong id="remaining-voters">0</strong></span>
+                        <button class="skip-btn" onclick="skipWaiting()">Sauter l'attente</button>
+                    </div>
+                    <div class="stat" style="margin-top: 1rem;">
+                        <div class="stat-value" id="votes-received">0</div>
+                        <div class="stat-label">Votes reçus</div>
+                    </div>
+                    <button class="secondary" onclick="showResults()" style="margin-top: 1rem;">Afficher les résultats maintenant</button>
+                </div>
+
+                <!-- Résultats -->
+                <div id="results-section" class="card hidden">
+                    <h2>Résultats</h2>
+                    <p id="result-question" style="font-weight: 600; margin-bottom: 0.5rem;"></p>
+                    <div class="grid-3" style="margin-bottom: 1rem;">
+                        <div class="stat">
+                            <div class="stat-value" id="total-votes">0</div>
+                            <div class="stat-label">Suffrages exprimés</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="absolute-majority">0</div>
+                            <div class="stat-label">Majorité absolue</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="total-voters">0</div>
+                            <div class="stat-label">Votants</div>
+                        </div>
+                    </div>
+                    <div id="results-list"></div>
+                    <button class="success" onclick="newVote()" style="margin-top: 1rem;">Créer un nouveau vote</button>
+                </div>
+            </div>
+
+            <!-- ONGLET HISTORIQUE -->
+            <div id="tab-history" class="tab-content">
+                <div class="card">
+                    <h2>Historique de la session</h2>
+                    <div id="history-list"></div>
+                    <button class="danger" onclick="closeSession()" style="margin-top: 1.5rem;">Télécharger le PDF et clore la session</button>
+                </div>
             </div>
         </div>
-
-        <!-- Bouton pour revenir à l'historique -->
-        <button id="back-to-history" class="outline hidden" onclick="showHistory()" style="margin-top: 0.5rem;">Retour à l'historique</button>
     </div>
 
     <div id="toast" class="toast"></div>
@@ -185,38 +233,41 @@
         // VARIABLES GLOBALES
         // ============================================
         let peer = null;
-        let connections = []; // Connexions actives des votants
+        let connections = [];
         let sessionId = null;
-        let currentVote = null; // { question, mode, options, maxChoices, votes: [] }
-        let voters = new Map(); // Map connId -> true (pour savoir qui est connecté)
-        let expectedVoters = new Set(); // Tous les IDs qui se sont déjà connectés
-        let hasVoted = new Set(); // IDs des votants ayant voté pour le vote en cours
-        let history = []; // Historique des votes de la session
+        let currentVote = null;
+        let voters = new Map();
+        let expectedVoters = new Set();
+        let hasVoted = new Set();
+        let history = [];
         let sessionStartTime = new Date();
         let voteActive = false;
         let waitingForVotes = false;
-        let voteTimeout = null;
+        let sessionClosed = false;
 
         // ============================================
         // INITIALISATION
         // ============================================
         function init() {
-            // Générer un ID de session unique
-            sessionId = 'vote-' + Math.random().toString(36).substr(2, 9);
+            // Générer un code court de 4 caractères
+            sessionId = Math.random().toString(36).substr(2, 4);
             
-            // Initialiser PeerJS
             peer = new Peer(sessionId, { debug: 0 });
             
             peer.on('open', (id) => {
                 console.log('Session ouverte avec ID:', id);
-                const link = `${window.location.origin}${window.location.pathname.replace('admin.html', 'index.html')}?session=${id}`;
+                
+                // Construire le lien vers index.html avec le paramètre ?s=
+                const basePath = window.location.pathname.replace('admin.html', 'index.html');
+                const link = `${window.location.origin}${basePath}?s=${id}`;
                 document.getElementById('session-link').value = link;
+                document.getElementById('code-display').textContent = id;
                 
                 // Générer le QR Code
                 new QRCode(document.getElementById("qrcode"), {
                     text: link,
-                    width: 200,
-                    height: 200,
+                    width: 180,
+                    height: 180,
                     colorDark: "#1e293b",
                     colorLight: "#ffffff",
                     correctLevel: QRCode.CorrectLevel.H
@@ -224,7 +275,6 @@
                 
                 document.getElementById('connection-status').textContent = 'Prêt';
                 document.getElementById('connection-status').className = 'badge success';
-                document.getElementById('create-section').classList.remove('hidden');
             });
             
             peer.on('connection', (conn) => {
@@ -234,9 +284,7 @@
                 expectedVoters.add(conn.peer);
                 updateConnectedCount();
                 
-                conn.on('data', (data) => {
-                    handleUserData(conn, data);
-                });
+                conn.on('data', (data) => handleUserData(conn, data));
                 
                 conn.on('close', () => {
                     console.log('Déconnexion:', conn.peer);
@@ -245,9 +293,7 @@
                     updateConnectedCount();
                 });
                 
-                conn.on('error', (err) => {
-                    console.error('Erreur connexion:', err);
-                });
+                conn.on('error', (err) => console.error('Erreur connexion:', err));
             });
             
             peer.on('error', (err) => {
@@ -255,10 +301,10 @@
                 showToast('Erreur de connexion: ' + err.type);
             });
             
-            // Charger l'historique depuis localStorage
             const savedHistory = localStorage.getItem('vote_history_' + sessionId);
             if (savedHistory) {
                 history = JSON.parse(savedHistory);
+                renderHistory();
             }
         }
 
@@ -266,18 +312,41 @@
         // GESTION DES DONNÉES UTILISATEURS
         // ============================================
         function handleUserData(conn, data) {
+            if (sessionClosed) return;
+            
+            if (data.type === 'hello') {
+                // Envoyer l'état actuel au nouveau connecté
+                if (voteActive && waitingForVotes) {
+                    conn.send({
+                        type: 'state',
+                        state: 'voting',
+                        vote: {
+                            question: currentVote.question,
+                            mode: currentVote.mode,
+                            options: currentVote.options,
+                            maxChoices: currentVote.maxChoices
+                        },
+                        hasVoted: hasVoted.has(conn.peer)
+                    });
+                } else if (!voteActive && currentVote) {
+                    conn.send({ type: 'state', state: 'results' });
+                } else {
+                    conn.send({ type: 'state', state: 'idle' });
+                }
+                return;
+            }
+            
             if (data.type === 'vote') {
                 if (!voteActive || hasVoted.has(conn.peer)) return;
                 
                 hasVoted.add(conn.peer);
                 currentVote.votes.push({
                     connId: conn.peer,
-                    answers: data.answers // Array d'index ou de valeurs
+                    answers: data.answers
                 });
                 
                 updateVoteProgress();
                 
-                // Vérifier si tout le monde a voté
                 if (hasVoted.size >= voters.size && voters.size > 0) {
                     finishVote();
                 }
@@ -289,10 +358,26 @@
         // ============================================
         function updateConnectedCount() {
             document.getElementById('connected-count').textContent = voters.size;
-            
             if (voteActive && waitingForVotes) {
                 const remaining = voters.size - hasVoted.size;
                 document.getElementById('remaining-voters').textContent = Math.max(0, remaining);
+            }
+        }
+
+        // ============================================
+        // ONGLETS
+        // ============================================
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'create') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('tab-create').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('tab-history').classList.add('active');
+                renderHistory();
             }
         }
 
@@ -325,7 +410,7 @@
             let maxChoices = 1;
             
             if (mode === 'simple') {
-                options = ['Oui', 'Abstention/Blanc', 'Non'];
+                options = ['Pour', 'Abstention/Blanc', 'Contre'];
             } else {
                 maxChoices = parseInt(document.getElementById('max-choices').value) || 1;
                 const inputs = document.querySelectorAll('.option-input');
@@ -349,7 +434,6 @@
             voteActive = true;
             waitingForVotes = true;
             
-            // Envoyer le vote à tous les connectés
             broadcast({
                 type: 'new_vote',
                 vote: {
@@ -360,7 +444,6 @@
                 }
             });
             
-            // Mettre à jour l'interface admin
             document.getElementById('create-section').classList.add('hidden');
             document.getElementById('vote-section').classList.remove('hidden');
             document.getElementById('results-section').classList.add('hidden');
@@ -373,9 +456,7 @@
 
         function broadcast(message) {
             connections.forEach(conn => {
-                if (conn.open) {
-                    conn.send(message);
-                }
+                if (conn.open) conn.send(message);
             });
         }
 
@@ -406,10 +487,8 @@
             voteActive = false;
             waitingForVotes = false;
             
-            // Calculer les résultats
             const results = calculateResults();
             
-            // Sauvegarder dans l'historique
             const historyEntry = {
                 ...currentVote,
                 results: results,
@@ -420,14 +499,8 @@
             history.push(historyEntry);
             localStorage.setItem('vote_history_' + sessionId, JSON.stringify(history));
             
-            // Afficher les résultats
             displayResults(results);
-            
-            // Envoyer les résultats aux utilisateurs
-            broadcast({
-                type: 'results',
-                results: results
-            });
+            broadcast({ type: 'results' });
         }
 
         function calculateResults() {
@@ -436,7 +509,6 @@
             const options = currentVote.options;
             const mode = currentVote.mode;
             
-            // Compter les voix
             const counts = {};
             options.forEach(opt => counts[opt] = 0);
             
@@ -444,27 +516,29 @@
             
             votes.forEach(vote => {
                 if (mode === 'simple') {
-                    // vote.answers est un tableau avec un seul index
                     const idx = vote.answers[0];
                     if (idx !== undefined && options[idx]) {
                         counts[options[idx]]++;
                         totalExpressed++;
+                    } else {
+                        totalExpressed++;
                     }
                 } else {
-                    // vote.answers est un tableau d'index
-                    vote.answers.forEach(idx => {
-                        if (options[idx]) {
-                            counts[options[idx]]++;
-                            totalExpressed++;
-                        }
-                    });
+                    if (vote.answers.length === 0) {
+                        totalExpressed++;
+                    } else {
+                        vote.answers.forEach(idx => {
+                            if (options[idx]) {
+                                counts[options[idx]]++;
+                                totalExpressed++;
+                            }
+                        });
+                    }
                 }
             });
             
-            // Calculer la majorité absolue (sur les suffrages exprimés)
             const absoluteMajority = Math.floor(totalExpressed / 2) + 1;
             
-            // Trier par nombre de voix décroissant
             const sorted = Object.entries(counts)
                 .map(([name, count]) => ({
                     name,
@@ -473,13 +547,11 @@
                 }))
                 .sort((a, b) => b.count - a.count);
             
-            // Déterminer les vainqueurs
             let winners = [];
             if (mode === 'multiple') {
                 const maxWinners = currentVote.maxChoices;
                 winners = sorted.slice(0, maxWinners).filter(w => w.count > 0);
             } else {
-                // En mode simple, le vainqueur est celui qui a le plus de voix
                 if (sorted.length > 0 && sorted[0].count > 0) {
                     winners = [sorted[0]];
                 }
@@ -519,53 +591,40 @@
                 div.innerHTML = `
                     <div style="flex: 1;">
                         <div class="flex-between">
-                            <span style="font-weight: ${isWinner ? '700' : '400'};">${item.name}</span>
+                            <span style="font-weight: ${isWinner ? '700' : '400'};">${escapeHtml(item.name)}</span>
                             <span>${item.count} voix (${item.percentage.toFixed(1)}%)</span>
                         </div>
                         <div class="result-bar">
                             <div class="result-bar-fill" style="width: ${item.percentage}%; ${isWinner ? 'background: var(--success);' : ''}"></div>
                         </div>
                     </div>
-                    ${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Élu</span>' : ''}
+                    ${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Voté</span>' : ''}
                 `;
                 list.appendChild(div);
             });
-            
-            // Afficher le bouton retour historique
-            document.getElementById('back-to-history').classList.remove('hidden');
         }
 
         function newVote() {
             document.getElementById('results-section').classList.add('hidden');
             document.getElementById('vote-section').classList.add('hidden');
             document.getElementById('create-section').classList.remove('hidden');
-            document.getElementById('back-to-history').classList.add('hidden');
             
-            // Réinitialiser le formulaire
             document.getElementById('question-input').value = '';
             document.getElementById('options-list').innerHTML = '';
             document.getElementById('max-choices').value = '1';
             document.getElementById('vote-mode').value = 'simple';
             toggleVoteMode();
             
-            // Réinitialiser les votes en cours
             currentVote = null;
             hasVoted.clear();
             
-            // Envoyer un signal de réinitialisation aux utilisateurs
             broadcast({ type: 'reset' });
         }
 
         // ============================================
         // HISTORIQUE
         // ============================================
-        function showHistory() {
-            document.getElementById('results-section').classList.add('hidden');
-            document.getElementById('vote-section').classList.add('hidden');
-            document.getElementById('create-section').classList.add('hidden');
-            document.getElementById('history-section').classList.remove('hidden');
-            document.getElementById('back-to-history').classList.add('hidden');
-            
+        function renderHistory() {
             const list = document.getElementById('history-list');
             list.innerHTML = '';
             
@@ -574,12 +633,12 @@
                 return;
             }
             
-            history.forEach((entry, index) => {
+            history.forEach((entry) => {
                 const div = document.createElement('div');
                 div.className = 'history-item';
                 div.innerHTML = `
                     <div class="flex-between">
-                        <strong>${entry.question}</strong>
+                        <strong>${escapeHtml(entry.question)}</strong>
                         <span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span>
                     </div>
                     <div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">
@@ -593,15 +652,12 @@
 
         function toggleHistoryDetail(element, entry) {
             const existing = element.querySelector('.history-detail');
-            if (existing) {
-                existing.remove();
-                return;
-            }
+            if (existing) { existing.remove(); return; }
             
             const detail = document.createElement('div');
             detail.className = 'history-detail';
             
-            let html = `<p><strong>Question :</strong> ${entry.question}</p>`;
+            let html = `<p><strong>Question :</strong> ${escapeHtml(entry.question)}</p>`;
             html += `<p><strong>Mode :</strong> ${entry.mode === 'simple' ? 'Simple' : 'Choix multiples (' + entry.maxChoices + ' max)'}</p>`;
             html += `<p><strong>Suffrages exprimés :</strong> ${entry.results.totalExpressed}</p>`;
             html += `<p><strong>Majorité absolue :</strong> ${entry.results.absoluteMajority}</p>`;
@@ -610,7 +666,7 @@
             html += '<ul style="margin-left: 1rem; margin-top: 0.25rem;">';
             entry.results.sorted.forEach(item => {
                 const isWinner = entry.results.winners.some(w => w.name === item.name);
-                html += `<li>${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%) ${isWinner ? '✅' : ''}</li>`;
+                html += `<li>${escapeHtml(item.name)} : ${item.count} voix (${item.percentage.toFixed(1)}%) ${isWinner ? '✓ Voté' : ''}</li>`;
             });
             html += '</ul>';
             
@@ -627,25 +683,25 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             
-            // En-tête
             doc.setFontSize(18);
             doc.text('Historique des votes', 14, 20);
             doc.setFontSize(10);
-            doc.text(`Session du ${sessionStartTime.toLocaleString()}`, 14, 28);
+            doc.text(`Session ${sessionId} - débutée le ${sessionStartTime.toLocaleString()}`, 14, 28);
             doc.text(`Exporté le ${new Date().toLocaleString()}`, 14, 34);
             
             let y = 45;
             
             history.forEach((entry, index) => {
-                if (y > 250) {
-                    doc.addPage();
-                    y = 20;
-                }
+                if (y > 250) { doc.addPage(); y = 20; }
                 
                 doc.setFontSize(12);
                 doc.setFont(undefined, 'bold');
-                doc.text(`Vote ${index + 1} : ${entry.question}`, 14, y);
-                y += 7;
+                const questionLines = doc.splitTextToSize(`Vote ${index + 1} : ${entry.question}`, 180);
+                questionLines.forEach(line => {
+                    doc.text(line, 14, y);
+                    y += 6;
+                });
+                y += 2;
                 
                 doc.setFontSize(10);
                 doc.setFont(undefined, 'normal');
@@ -656,7 +712,7 @@
                 
                 entry.results.sorted.forEach(item => {
                     const isWinner = entry.results.winners.some(w => w.name === item.name);
-                    const line = `  - ${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%)${isWinner ? ' [ÉLU]' : ''}`;
+                    const line = `  - ${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%)${isWinner ? ' [Voté]' : ''}`;
                     doc.text(line, 14, y);
                     y += 5;
                 });
@@ -664,39 +720,41 @@
                 y += 5;
             });
             
-            doc.save(`historique_votes_${sessionStartTime.toISOString().slice(0,10)}.pdf`);
+            doc.save(`historique_votes_${sessionId}_${sessionStartTime.toISOString().slice(0,10)}.pdf`);
         }
 
         // ============================================
         // CLÔTURE DE SESSION
         // ============================================
         function closeSession() {
-            if (!confirm('Êtes-vous sûr de vouloir clore la session ? Tous les participants seront déconnectés et l\'historique sera supprimé.')) return;
+            if (!confirm('Télécharger le PDF puis clore la session ? Tous les participants seront déconnectés.')) return;
             
-            // Envoyer le signal de clôture
+            // 1. Télécharger le PDF
+            exportPDF();
+            
+            // 2. Clore la session
+            sessionClosed = true;
+            
+            // Envoyer le signal de clôture aux clients
             broadcast({ type: 'close' });
             
             // Nettoyer
             localStorage.removeItem('vote_history_' + sessionId);
             history = [];
             
-            // Déconnecter tout le monde
             connections.forEach(conn => {
                 if (conn.open) conn.close();
             });
             connections = [];
             voters.clear();
             
-            // Réinitialiser l'interface
-            document.getElementById('create-section').classList.add('hidden');
-            document.getElementById('vote-section').classList.add('hidden');
-            document.getElementById('results-section').classList.add('hidden');
-            document.getElementById('history-section').classList.add('hidden');
-            document.getElementById('back-to-history').classList.add('hidden');
-            document.getElementById('setup-section').classList.remove('hidden');
-            document.getElementById('connected-count').textContent = '0';
+            if (peer) {
+                try { peer.destroy(); } catch(e) {}
+            }
             
-            showToast('Session close. Les participants sont déconnectés.');
+            // Basculer sur l'écran de clôture
+            document.getElementById('main-view').classList.add('hidden');
+            document.getElementById('closed-view').classList.remove('hidden');
         }
 
         // ============================================
@@ -716,19 +774,24 @@
             setTimeout(() => toast.classList.remove('show'), 3000);
         }
 
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         // ============================================
         // DÉMARRAGE
         // ============================================
         window.onload = () => {
             init();
             toggleVoteMode();
-            addOption(); // Ajouter une première option par défaut
+            addOption();
             addOption();
         };
 
-        // Nettoyage à la fermeture
         window.onbeforeunload = () => {
-            if (peer) peer.destroy();
+            if (peer && !sessionClosed) peer.destroy();
         };
     </script>
 </body>
