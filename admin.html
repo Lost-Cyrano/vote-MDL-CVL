@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Administration - Vote</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗳️</text></svg>">
     <!-- PeerJS officiel (fonctionne à nouveau) -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -161,45 +162,198 @@
 
     <script>
         let peer = null, connections = [], sessionId = null, displayCode = null;
-        let currentVote = null, voters = new Map(), hasVoted = new Set(), history = [];
-        let sessionStartTime = new Date(), voteActive = false, waitingForVotes = false;
-        let draftTimeout = null, sessionClosed = false;
+let currentVote = null, voters = new Map(), hasVoted = new Set(), history = [];
+let sessionStartTime = new Date(), voteActive = false, waitingForVotes = false;
+let draftTimeout = null, sessionClosed = false;
+let peerReady = false, reconnectAttempts = 0, reconnectTimer = null;
 
-        function init() {
-            if (sessionClosed) return;
-            if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
-            displayCode = generateShortCode();
-            sessionId = APP_PREFIX + '-' + displayCode;
-            
-            // PeerJS officiel - connexion au serveur public
-            peer = new Peer(sessionId, { debug: 1 });
-            
-            peer.on('open', (id) => {
-                console.log('✅ Session ouverte avec ID:', id);
-                const baseUrl = window.location.origin + window.location.pathname.replace(/admin\.html$/, 'index.html');
-                const link = `${baseUrl}?s=${displayCode}`;
-                document.getElementById('session-link').value = link;
-                document.getElementById('session-code-display').textContent = displayCode;
-                document.getElementById("qrcode").innerHTML = '';
-                new QRCode(document.getElementById("qrcode"), { text: link, width: 360, height: 360, colorDark: "#1e293b", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
-                document.getElementById('connection-status').textContent = 'Prêt';
-                document.getElementById('connection-status').className = 'badge success';
-            });
-            
-            peer.on('connection', (conn) => {
-                connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
-                conn.on('data', (data) => handleUserData(conn, data));
-                conn.on('close', () => { voters.delete(conn.peer); connections = connections.filter(c => c.peer !== conn.peer); updateConnectedCount(); });
-            });
-            
-            peer.on('error', (err) => {
-                console.error('Erreur PeerJS:', err);
-                if (err.type === 'unavailable-id') { showToast('Code déjà utilisé, régénération...'); setTimeout(() => { try { peer.destroy(); } catch(e) {} init(); }, 1000); return; }
-                showToast('Erreur: ' + err.type);
-            });
-            const savedHistory = localStorage.getItem('vote_history_' + sessionId);
-            if (savedHistory) history = JSON.parse(savedHistory);
+function init() {
+    if (sessionClosed) return;
+    peerReady = false;
+    if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+    
+    displayCode = generateShortCode();
+    sessionId = APP_PREFIX + '-' + displayCode;
+    
+    console.log('🔌 Initialisation PeerJS avec ID:', sessionId);
+    updateConnectionStatus('Connexion au serveur...', 'warning');
+    
+    try {
+        peer = new Peer(sessionId, PEER_CONFIG);
+    } catch (e) {
+        console.error('Erreur création PeerJS:', e);
+        showToast('Erreur de connexion. Nouvelle tentative...');
+        scheduleReconnect();
+        return;
+    }
+    
+    peer.on('open', (id) => {
+        console.log('✅ Session ouverte avec ID:', id);
+        peerReady = true;
+        reconnectAttempts = 0;
+        
+        const baseUrl = window.location.origin + window.location.pathname.replace(/admin\.html$/, 'index.html');
+        const link = `${baseUrl}?s=${displayCode}`;
+        document.getElementById('session-link').value = link;
+        document.getElementById('session-code-display').textContent = displayCode;
+        
+        const qrContainer = document.getElementById("qrcode");
+        if (qrContainer) {
+            qrContainer.innerHTML = '';
+            try {
+                new QRCode(qrContainer, { 
+                    text: link, 
+                    width: 360, 
+                    height: 360, 
+                    colorDark: "#1e293b", 
+                    colorLight: "#ffffff", 
+                    correctLevel: QRCode.CorrectLevel.M 
+                });
+            } catch (e) {
+                console.error('Erreur QRCode:', e);
+            }
         }
+        
+        updateConnectionStatus('Prêt', 'success');
+    });
+    
+    peer.on('connection', (conn) => {
+        console.log('👤 Nouvelle connexion:', conn.peer);
+        connections.push(conn);
+        voters.set(conn.peer, true);
+        updateConnectedCount();
+        
+        // Envoyer l'état actuel immédiatement
+        if (voteActive && currentVote) {
+            conn.on('open', () => {
+                try {
+                    conn.send({ type: 'state', state: 'voting', vote: currentVote, hasVoted: hasVoted.has(conn.peer) });
+                } catch(e) {}
+            });
+        }
+        
+        conn.on('data', (data) => handleUserData(conn, data));
+        conn.on('close', () => {
+            voters.delete(conn.peer);
+            connections = connections.filter(c => c.peer !== conn.peer);
+            updateConnectedCount();
+        });
+        conn.on('error', (err) => {
+            console.warn('Erreur connexion utilisateur:', err);
+        });
+    });
+    
+    peer.on('error', (err) => {
+        console.error('Erreur PeerJS:', err.type, err.message);
+        
+        if (err.type === 'unavailable-id') {
+            showToast('Code déjà utilisé, régénération...');
+            setTimeout(() => { try { peer.destroy(); } catch(e) {} init(); }, 1000);
+            return;
+        }
+        
+        if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
+            peerReady = false;
+            updateConnectionStatus('Serveur inaccessible, reconnexion...', 'warning');
+            scheduleReconnect();
+            return;
+        }
+        
+        updateConnectionStatus('Erreur: ' + err.type, 'warning');
+    });
+    
+    peer.on('disconnected', () => {
+        console.warn('⚠️ PeerJS déconnecté');
+        peerReady = false;
+        updateConnectionStatus('Déconnecté, reconnexion...', 'warning');
+        if (!sessionClosed) {
+            try { peer.reconnect(); } catch(e) { scheduleReconnect(); }
+        }
+    });
+    
+    peer.on('close', () => {
+        console.warn('PeerJS fermé');
+        peerReady = false;
+    });
+    
+    // Charger l'historique
+    try {
+        const savedHistory = localStorage.getItem('vote_history_' + sessionId);
+        if (savedHistory) history = JSON.parse(savedHistory);
+    } catch(e) { console.warn('localStorage indisponible:', e); }
+}
+
+function scheduleReconnect() {
+    if (sessionClosed) return;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectAttempts++;
+    const delay = Math.min(3000 * reconnectAttempts, 15000);
+    console.log(`🔄 Reconnexion dans ${delay}ms (tentative ${reconnectAttempts})`);
+    reconnectTimer = setTimeout(() => {
+        if (!sessionClosed && (!peer || !peerReady)) {
+            // Garder le même displayCode pour ne pas invalider le lien/QR
+            initPeerOnly();
+        }
+    }, delay);
+}
+
+// Réinitialise seulement le peer (garde le même code)
+function initPeerOnly() {
+    if (sessionClosed) return;
+    if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+    
+    try {
+        peer = new Peer(sessionId, PEER_CONFIG);
+    } catch(e) {
+        scheduleReconnect();
+        return;
+    }
+    
+    peer.on('open', () => {
+        console.log('✅ Reconnecté avec ID:', sessionId);
+        peerReady = true;
+        reconnectAttempts = 0;
+        updateConnectionStatus('Prêt', 'success');
+        // Notifier les clients connectés
+        connections.forEach(conn => { if (conn.open) { try { conn.send({ type: 'ping' }); } catch(e) {} } });
+    });
+    
+    peer.on('connection', (conn) => {
+        connections.push(conn);
+        voters.set(conn.peer, true);
+        updateConnectedCount();
+        conn.on('data', (data) => handleUserData(conn, data));
+        conn.on('close', () => {
+            voters.delete(conn.peer);
+            connections = connections.filter(c => c.peer !== conn.peer);
+            updateConnectedCount();
+        });
+    });
+    
+    peer.on('error', (err) => {
+        console.warn('Erreur PeerJS (reconnexion):', err.type);
+        if (err.type === 'unavailable-id') {
+            // Le code est peut-être encore réservé, on attend
+            scheduleReconnect();
+        } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
+            scheduleReconnect();
+        }
+    });
+    
+    peer.on('disconnected', () => {
+        peerReady = false;
+        if (!sessionClosed) {
+            try { peer.reconnect(); } catch(e) { scheduleReconnect(); }
+        }
+    });
+}
+
+function updateConnectionStatus(text, type) {
+    const el = document.getElementById('connection-status');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'badge ' + type;
+}
 
         function generateShortCode() { const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'; let code = ''; for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length)); return code; }
         function openAdmin() { document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.remove('hidden'); }
@@ -233,7 +387,13 @@
             document.getElementById('current-question-display').textContent = question; document.getElementById('votes-received').textContent = '0'; document.getElementById('remaining-voters').textContent = voters.size;
             showToast('Vote lancé !');
         }
-        function broadcast(message) { connections.forEach(conn => { if (conn.open) conn.send(message); }); }
+        
+        function broadcast(message) {
+    connections = connections.filter(conn => {
+        if (!conn || !conn.open) return false;
+        try { conn.send(message); return true; } catch(e) { return false; }
+    });
+}
         function updateVoteProgress() { document.getElementById('votes-received').textContent = hasVoted.size; document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
         function skipWaiting() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
         function showResults() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
@@ -265,7 +425,22 @@
         function renderHistory() { const list = document.getElementById('history-list'); list.innerHTML = ''; if (history.length === 0) { list.innerHTML = '<p style="text-align: center; color: var(--text-light); padding: 1rem;">Aucun vote dans l\'historique.</p>'; return; } history.forEach((entry) => { const div = document.createElement('div'); div.className = 'history-item'; div.innerHTML = `<div class="flex-between"><strong>${escapeHtml(entry.question)}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">${entry.results.totalExpressed} suffrages exprimés - ${entry.results.totalVoters} votants</div>`; div.onclick = () => toggleHistoryDetail(div, entry); list.appendChild(div); }); }
         function toggleHistoryDetail(element, entry) { const existing = element.querySelector('.history-detail'); if (existing) { existing.remove(); return; } const detail = document.createElement('div'); detail.className = 'history-detail'; let html = `<p><strong>Question :</strong> ${escapeHtml(entry.question)}</p>`; html += `<p><strong>Mode :</strong> ${entry.mode === 'simple' ? 'Simple' : 'Choix multiples (' + entry.maxChoices + ' max)'}</p>`; html += `<p><strong>Suffrages exprimés :</strong> ${entry.results.totalExpressed}</p>`; html += `<p><strong>Majorité absolue :</strong> ${entry.results.absoluteMajority}</p>`; html += `<p><strong>Votants :</strong> ${entry.results.totalVoters}</p>`; html += `<p><strong>Résultats :</strong></p><ul style="margin-left: 1rem; margin-top: 0.25rem;">`; entry.results.sorted.forEach(item => { const isWinner = entry.results.winners.some(w => w.name === item.name); html += `<li>${escapeHtml(item.name)} : ${item.count} voix (${item.percentage.toFixed(1)}%) ${isWinner ? '✓ Voté' : ''}</li>`; }); html += '</ul>'; detail.innerHTML = html; element.appendChild(detail); }
         
-        function closeSessionAndExport() { if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return; sessionClosed = true; if (history.length > 0) exportPDF(); broadcast({ type: 'close' }); localStorage.removeItem('vote_history_' + sessionId); history = []; connections.forEach(conn => { if (conn.open) conn.close(); }); connections = []; voters.clear(); if (peer) { try { peer.destroy(); } catch(e) {} } document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.add('hidden'); document.getElementById('closed-section').classList.remove('hidden'); }
+        function closeSessionAndExport() {
+    if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return;
+    sessionClosed = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (history.length > 0) exportPDF();
+    broadcast({ type: 'close' });
+    try { localStorage.removeItem('vote_history_' + sessionId); } catch(e) {}
+    history = [];
+    connections.forEach(conn => { if (conn.open) { try { conn.close(); } catch(e) {} } });
+    connections = [];
+    voters.clear();
+    if (peer) { try { peer.destroy(); } catch(e) {} }
+    document.getElementById('home-section').classList.add('hidden');
+    document.getElementById('admin-section').classList.add('hidden');
+    document.getElementById('closed-section').classList.remove('hidden');
+}
         function exportPDF() { const { jsPDF } = window.jspdf; const doc = new jsPDF(); doc.setFontSize(18); doc.text('Historique des votes', 14, 20); doc.setFontSize(10); doc.text(`Session du ${sessionStartTime.toLocaleString()}`, 14, 28); doc.text(`Code de session : ${displayCode}`, 14, 34); let y = 52; history.forEach((entry, index) => { if (y > 250) { doc.addPage(); y = 20; } doc.setFontSize(12); doc.setFont(undefined, 'bold'); const q = doc.splitTextToSize(`Vote ${index + 1} : ${entry.question}`, 180); doc.text(q, 14, y); y += q.length * 6 + 2; doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.text(`Mode : ${entry.mode === 'simple' ? 'Simple' : 'Choix multiples (' + entry.maxChoices + ' max)'}`, 14, y); y += 5; doc.text(`Suffrages exprimés : ${entry.results.totalExpressed} | Majorité absolue : ${entry.results.absoluteMajority} | Votants : ${entry.results.totalVoters}`, 14, y); y += 7; entry.results.sorted.forEach(item => { const isWinner = entry.results.winners.some(w => w.name === item.name); const line = `  - ${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%)${isWinner ? ' [VOTÉ]' : ''}`; doc.text(line, 14, y); y += 5; }); y += 5; }); doc.save(`historique_votes_${displayCode}_${sessionStartTime.toISOString().slice(0,10)}.pdf`); }
         function copyLink() { const input = document.getElementById('session-link'); input.select(); document.execCommand('copy'); showToast('Lien copié !'); }
         function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
