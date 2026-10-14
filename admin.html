@@ -262,9 +262,9 @@
             peer.on('open', (id) => {
                 console.log('Session ouverte avec ID:', id);
                 
-                // Le lien pointe vers index.html avec ?s=CODE
+                // Le lien pointe vers index.html avec ?session=CODE
                 const baseUrl = window.location.origin + window.location.pathname.replace('/admin', '/');
-                const link = `${baseUrl}?s=${id}`;
+                const link = `${baseUrl}?session=${id}`;
                 
                 document.getElementById('session-link').value = link;
                 document.getElementById('session-code-display').textContent = id;
@@ -315,7 +315,7 @@
             // Génère un code de 4 caractères alphanumériques en minuscules
             const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
             let code = '';
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < 9; i++) {
                 code += chars.charAt(Math.floor(Math.random() * chars.length));
             }
             return code;
