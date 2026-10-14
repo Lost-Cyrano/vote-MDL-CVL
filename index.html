@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vote</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            --success: #10b981;
+            --danger: #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+        .container { width: 100%; max-width: 500px; }
+        .card { background: var(--card); border-radius: 16px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); border: 1px solid var(--border); text-align: center; }
+        h1 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+        h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+        p { color: var(--text-light); font-size: 0.95rem; line-height: 1.5; }
+        .question { font-size: 1.15rem; font-weight: 600; color: var(--text); margin-bottom: 1rem; text-align: left; line-height: 1.4; }
+        button { background: var(--primary); color: white; border: none; padding: 1rem; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; width: 100%; margin-top: 0.75rem; }
+        button:hover:not(:disabled) { background: var(--primary-hover); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button.success { background: var(--success); }
+        button.success:hover:not(:disabled) { background: #059669; }
+        .hidden { display: none !important; }
+        .spinner { border: 4px solid var(--border); border-top: 4px solid var(--primary); border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; margin: 1.5rem auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .option { display: flex; align-items: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 0.6rem; cursor: pointer; transition: all 0.15s; text-align: left; background: var(--card); }
+        .option:active { transform: scale(0.98); }
+        .option.selected { border-color: var(--primary); background: #eff6ff; }
+        .option.disabled { opacity: 0.4; cursor: not-allowed; }
+        .option-check { width: 22px; height: 22px; border: 2px solid var(--border); border-radius: 50%; margin-right: 0.75rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+        .option.selected .option-check { border-color: var(--primary); background: var(--primary); }
+        .option.selected .option-check::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: white; }
+        .option.multiple .option-check { border-radius: 6px; }
+        .option.multiple.selected .option-check { border-radius: 6px; }
+        .option.multiple.selected .option-check::after { content: '✓'; color: white; font-size: 14px; font-weight: bold; background: none; width: auto; height: auto; }
+        .option-text { flex: 1; font-weight: 500; color: var(--text); }
+        .info-box { background: var(--bg); border-radius: 10px; padding: 0.75rem; margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-light); }
+        .info-box strong { color: var(--text); }
+        .counter { display: inline-block; padding: 0.25rem 0.6rem; background: var(--primary); color: white; border-radius: 20px; font-size: 0.8rem; font-weight: 600; margin-left: 0.5rem; }
+        .result-item { display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid var(--border); text-align: left; }
+        .result-item:last-child { border-bottom: none; }
+        .result-item.winner { background: #ecfdf5; border-radius: 8px; font-weight: 600; }
+        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
+        .badge.success { background: #d1fae5; color: #065f46; }
+        .badge.info { background: #dbeafe; color: #1e40af; }
+        .footer-status { margin-top: 1rem; font-size: 0.8rem; color: var(--text-light); display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+        .status-dot.connected { background: var(--success); }
+        .error-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 1rem; border-radius: 10px; margin-top: 1rem; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ÉCRAN 1 : Chargement / Connexion -->
+        <div id="loading-screen" class="card">
+            <div class="spinner"></div>
+            <h1>Connexion en cours...</h1>
+            <p>Veuillez patienter pendant la connexion à la session de vote.</p>
+            <div class="footer-status">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="status-text">Déconnexion</span>
+            </div>
+            <div id="error-box" class="error-box hidden"></div>
+        </div>
+
+        <!-- ÉCRAN 2 : Attente d'un vote -->
+        <div id="waiting-screen" class="card hidden">
+            <div class="spinner"></div>
+            <h1>En attente du vote</h1>
+            <p>Vous êtes bien connecté. Le vote va bientôt commencer.</p>
+            <div class="footer-status">
+                <span class="status-dot connected"></span>
+                <span>Connecté</span>
+            </div>
+        </div>
+
+        <!-- ÉCRAN 3 : Vote en cours -->
+        <div id="vote-screen" class="card hidden">
+            <p class="question" id="vote-question"></p>
+            <div id="vote-info" class="info-box hidden"></div>
+            <div id="options-container"></div>
+            <button id="submit-btn" class="success" onclick="submitVote()">Valider</button>
+        </div>
+
+        <!-- ÉCRAN 4 : Vote envoyé / Attente des résultats -->
+        <div id="voted-screen" class="card hidden">
+            <div class="spinner"></div>
+            <h1>Vote enregistré</h1>
+            <p>Votre vote a bien été pris en compte. Veuillez patienter en attendant la fin du vote.</p>
+        </div>
+
+        <!-- ÉCRAN 5 : Résultats affichés -->
+        <div id="results-screen" class="card hidden">
+            <h1>Résultats du vote</h1>
+            <p class="question" id="results-question"></p>
+            <div class="info-box">
+                <div><strong>Suffrages exprimés :</strong> <span id="result-total"></span></div>
+                <div><strong>Majorité absolue :</strong> <span id="result-majority"></span></div>
+            </div>
+            <div id="results-list" style="margin-top: 1rem;"></div>
+            <p style="margin-top: 1rem; font-size: 0.85rem;">Veuillez rester attentif au prochain vote.</p>
+        </div>
+
+        <!-- ÉCRAN 6 : Session close -->
+        <div id="closed-screen" class="card hidden">
+            <h1>Session close</h1>
+            <p>La session de vote a été clôturée par l'administrateur. Merci de votre participation.</p>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // VARIABLES GLOBALES
+        // ============================================
+        let peer = null;
+        let conn = null;
+        let sessionId = null;
+        let reconnectInterval = null;
+        let currentVote = null;
+        let selectedAnswers = [];
+        let hasVotedThisRound = false;
+        let clientId = null;
+
+        // ============================================
+        // INITIALISATION
+        // ============================================
+        function init() {
+            // Récupérer l'ID de session dans l'URL
+            const params = new URLSearchParams(window.location.search);
+            sessionId = params.get('session');
+            
+            if (!sessionId) {
+                showError('Aucune session de vote spécifiée. Veuillez scanner le QR Code fourni par l\'administrateur.');
+                return;
+            }
+            
+            // Récupérer ou créer un ID client persistant
+            clientId = sessionStorage.getItem('vote_client_id');
+            if (!clientId) {
+                clientId = 'client-' + Math.random().toString(36).substr(2, 12);
+                sessionStorage.setItem('vote_client_id', clientId);
+            }
+            
+            connectToAdmin();
+        }
+
+        function connectToAdmin() {
+            updateStatus('Connexion...', false);
+            
+            // Détruire l'ancien peer si existant
+            if (peer) {
+                try { peer.destroy(); } catch(e) {}
+            }
+            
+            // Créer un nouveau peer avec un ID unique
+            peer = new Peer(clientId, { debug: 0 });
+            
+            peer.on('open', (id) => {
+                console.log('Client connecté avec ID:', id);
+                
+                // Se connecter à l'admin
+                conn = peer.connect(sessionId, { reliable: true });
+                
+                conn.on('open', () => {
+                    console.log('Connexion à l\'admin établie');
+                    updateStatus('Connecté', true);
+                    
+                    // Demander l'état actuel
+                    conn.send({ type: 'hello' });
+                    
+                    // Afficher l'écran d'attente
+                    showScreen('waiting-screen');
+                });
+                
+                conn.on('data', (data) => {
+                    handleAdminMessage(data);
+                });
+                
+                conn.on('close', () => {
+                    console.log('Connexion fermée par l\'admin');
+                    updateStatus('Déconnecté', false);
+                    scheduleReconnect();
+                });
+                
+                conn.on('error', (err) => {
+                    console.error('Erreur de connexion:', err);
+                    updateStatus('Erreur', false);
+                    scheduleReconnect();
+                });
+            });
+            
+            peer.on('error', (err) => {
+                console.error('Erreur PeerJS:', err);
+                updateStatus('Erreur', false);
+                
+                if (err.type === 'unavailable-id') {
+                    // L'ID est déjà pris, régénérer
+                    clientId = 'client-' + Math.random().toString(36).substr(2, 12);
+                    sessionStorage.setItem('vote_client_id', clientId);
+                }
+                
+                scheduleReconnect();
+            });
+            
+            peer.on('disconnected', () => {
+                console.log('Peer déconnecté, tentative de reconnexion...');
+                updateStatus('Reconnexion...', false);
+                try { peer.reconnect(); } catch(e) {}
+            });
+        }
+
+        function scheduleReconnect() {
+            if (reconnectInterval) clearInterval(reconnectInterval);
+            
+            reconnectInterval = setInterval(() => {
+                if (!conn || !conn.open) {
+                    console.log('Tentative de reconnexion...');
+                    connectToAdmin();
+                }
+            }, 3000);
+        }
+
+        // ============================================
+        // GESTION DES MESSAGES DE L'ADMIN
+        // ============================================
+        function handleAdminMessage(data) {
+            console.log('Message reçu:', data);
+            
+            switch(data.type) {
+                case 'new_vote':
+                    currentVote = data.vote;
+                    hasVotedThisRound = false;
+                    selectedAnswers = [];
+                    showVoteScreen();
+                    break;
+                    
+                case 'results':
+                    showResultsScreen(data.results);
+                    break;
+                    
+                case 'reset':
+                    currentVote = null;
+                    hasVotedThisRound = false;
+                    selectedAnswers = [];
+                    showScreen('waiting-screen');
+                    break;
+                    
+                case 'close':
+                    showScreen('closed-screen');
+                    if (reconnectInterval) clearInterval(reconnectInterval);
+                    if (peer) {
+                        try { peer.destroy(); } catch(e) {}
+                    }
+                    break;
+                    
+                case 'state':
+                    // L'admin nous renvoie l'état actuel
+                    if (data.state === 'voting' && data.vote) {
+                        currentVote = data.vote;
+                        if (data.hasVoted) {
+                            hasVotedThisRound = true;
+                            showScreen('voted-screen');
+                        } else {
+                            showVoteScreen();
+                        }
+                    } else if (data.state === 'results' && data.results) {
+                        showResultsScreen(data.results);
+                    } else {
+                        showScreen('waiting-screen');
+                    }
+                    break;
+            }
+        }
+
+        // ============================================
+        // AFFICHAGE DES ÉCRANS
+        // ============================================
+        function showScreen(screenId) {
+            ['loading-screen', 'waiting-screen', 'vote-screen', 'voted-screen', 'results-screen', 'closed-screen'].forEach(id => {
+                document.getElementById(id).classList.toggle('hidden', id !== screenId);
+            });
+        }
+
+        function showVoteScreen() {
+            if (!currentVote) return;
+            
+            document.getElementById('vote-question').textContent = currentVote.question;
+            
+            const infoBox = document.getElementById('vote-info');
+            if (currentVote.mode === 'multiple') {
+                infoBox.classList.remove('hidden');
+                infoBox.innerHTML = `Sélectionnez jusqu'à <strong>${currentVote.maxChoices}</strong> option(s).`;
+            } else {
+                infoBox.classList.add('hidden');
+            }
+            
+            // Construire les options
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+            
+            currentVote.options.forEach((opt, index) => {
+                const div = document.createElement('div');
+                div.className = 'option' + (currentVote.mode === 'multiple' ? ' multiple' : '');
+                div.dataset.index = index;
+                div.onclick = () => toggleOption(index, div);
+                div.innerHTML = `
+                    <div class="option-check"></div>
+                    <div class="option-text">${escapeHtml(opt)}</div>
+                `;
+                container.appendChild(div);
+            });
+            
+            updateSubmitButton();
+            showScreen('vote-screen');
+        }
+
+        function toggleOption(index, element) {
+            if (currentVote.mode === 'simple') {
+                // Un seul choix
+                selectedAnswers = [index];
+                document.querySelectorAll('.option').forEach(el => el.classList.remove('selected'));
+                element.classList.add('selected');
+            } else {
+                // Choix multiples
+                const pos = selectedAnswers.indexOf(index);
+                if (pos > -1) {
+                    selectedAnswers.splice(pos, 1);
+                    element.classList.remove('selected');
+                } else {
+                    if (selectedAnswers.length >= currentVote.maxChoices) {
+                        // Retirer le premier sélectionné
+                        const firstIdx = selectedAnswers.shift();
+                        document.querySelectorAll('.option').forEach(el => {
+                            if (parseInt(el.dataset.index) === firstIdx) {
+                                el.classList.remove('selected');
+                            }
+                        });
+                    }
+                    selectedAnswers.push(index);
+                    element.classList.add('selected');
+                }
+            }
+            updateSubmitButton();
+        }
+
+        function updateSubmitButton() {
+            const btn = document.getElementById('submit-btn');
+            const counter = document.querySelector('.counter');
+            if (counter) counter.remove();
+            
+            if (currentVote.mode === 'multiple') {
+                btn.textContent = `Valider (${selectedAnswers.length}/${currentVote.maxChoices})`;
+                btn.disabled = selectedAnswers.length === 0;
+            } else {
+                btn.textContent = 'Valider';
+                btn.disabled = selectedAnswers.length === 0;
+            }
+        }
+
+        // ============================================
+        // ENVOI DU VOTE
+        // ============================================
+        function submitVote() {
+            if (selectedAnswers.length === 0) return;
+            if (!conn || !conn.open) {
+                showError('Connexion perdue. Tentative de reconnexion...');
+                return;
+            }
+            
+            // Envoyer le vote de manière anonyme (juste les index)
+            conn.send({
+                type: 'vote',
+                answers: selectedAnswers
+            });
+            
+            hasVotedThisRound = true;
+            showScreen('voted-screen');
+        }
+
+        // ============================================
+        // AFFICHAGE DES RÉSULTATS
+        // ============================================
+        function showResultsScreen(results) {
+            document.getElementById('results-question').textContent = currentVote ? currentVote.question : '';
+            document.getElementById('result-total').textContent = results.totalExpressed;
+            document.getElementById('result-majority').textContent = results.absoluteMajority;
+            
+            const list = document.getElementById('results-list');
+            list.innerHTML = '';
+            
+            results.sorted.forEach(item => {
+                const isWinner = results.winners.some(w => w.name === item.name);
+                const div = document.createElement('div');
+                div.className = 'result-item' + (isWinner ? ' winner' : '');
+                div.innerHTML = `
+                    <span>${escapeHtml(item.name)}</span>
+                    <span>${item.count} voix (${item.percentage.toFixed(1)}%) ${isWinner ? '✓' : ''}</span>
+                `;
+                list.appendChild(div);
+            });
+            
+            showScreen('results-screen');
+        }
+
+        // ============================================
+        // UTILITAIRES
+        // ============================================
+        function updateStatus(text, connected) {
+            document.getElementById('status-text').textContent = text;
+            document.getElementById('status-dot').classList.toggle('connected', connected);
+        }
+
+        function showError(message) {
+            const box = document.getElementById('error-box');
+            box.textContent = message;
+            box.classList.remove('hidden');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ============================================
+        // DÉMARRAGE
+        // ============================================
+        window.onload = init;
+
+        // Reprendre la connexion quand l'utilisateur revient sur la page
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && (!conn || !conn.open)) {
+                console.log('Retour sur la page, reconnexion...');
+                connectToAdmin();
+            }
+        });
+
+        // Nettoyage
+        window.onbeforeunload = () => {
+            if (reconnectInterval) clearInterval(reconnectInterval);
+        };
+    </script>
+</body>
+</html>
