@@ -38,12 +38,10 @@
         .spinner { border: 4px solid var(--border); border-top: 4px solid var(--primary); border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; margin: 1.5rem auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* Input code session */
         .code-input { font-size: 2rem; text-align: center; letter-spacing: 0.5rem; text-transform: lowercase; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; width: 100%; margin-bottom: 1rem; font-family: monospace; }
         .code-input:focus { outline: none; border-color: var(--primary); }
         .code-input::placeholder { letter-spacing: 0.5rem; color: #cbd5e1; }
         
-        /* Options de vote */
         .option { display: flex; align-items: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 0.6rem; cursor: pointer; transition: all 0.15s; text-align: left; background: var(--card); }
         .option:active { transform: scale(0.98); }
         .option.selected { border-color: var(--primary); background: #eff6ff; }
@@ -56,7 +54,6 @@
         .option.multiple.selected .option-check::after { content: '✓'; color: white; font-size: 14px; font-weight: bold; background: none; width: auto; height: auto; }
         .option-text { flex: 1; font-weight: 500; color: var(--text); }
         
-        /* Boutons Oui/Non/Abstention en paysage */
         .vote-row { display: flex; gap: 0.75rem; margin-top: 1rem; }
         .vote-btn { flex: 1; padding: 2rem 1rem; border-radius: 16px; font-size: 1.2rem; font-weight: 700; border: 3px solid transparent; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 140px; color: white; }
         .vote-btn:active { transform: scale(0.97); }
@@ -73,16 +70,13 @@
         .status-dot.connected { background: var(--success); }
         .error-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 1rem; border-radius: 10px; margin-top: 1rem; font-size: 0.9rem; }
         
-        /* Scanner QR */
         #qr-reader { width: 100%; border-radius: 12px; overflow: hidden; margin-top: 1rem; }
         
-        /* Boutons validation choix multiples */
         .validate-row { display: flex; gap: 0.5rem; margin-top: 1rem; }
         .validate-row button { margin-top: 0; }
         .btn-blank { background: var(--bg); color: var(--text); border: 2px solid var(--border); }
         .btn-blank:hover:not(:disabled) { background: var(--border); }
         
-        /* Prévisualisation (attente) */
         .preview-disabled { opacity: 0.3; pointer-events: none; }
         .preview-option { display: flex; align-items: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 0.6rem; background: var(--card); opacity: 0.3; }
         .preview-check { width: 22px; height: 22px; border: 2px solid var(--border); border-radius: 6px; margin-right: 0.75rem; flex-shrink: 0; }
@@ -107,14 +101,14 @@
         <div id="code-screen" class="card hidden">
             <h1>Rejoindre un vote</h1>
             <p style="margin-bottom: 1rem;">Entrez le code de session fourni par l'administrateur ou scannez le QR Code.</p>
-            <input type="text" id="session-code-input" class="code-input" placeholder="code" maxlength="9" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <input type="text" id="session-code-input" class="code-input" placeholder="code" maxlength="4" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
             <button onclick="submitCode()">Rejoindre</button>
             <button class="btn-blank" onclick="startQrScan()" style="margin-top: 0.5rem;">📷 Scanner un QR Code</button>
             <div id="qr-reader" class="hidden"></div>
             <div id="qr-error" class="error-box hidden"></div>
         </div>
 
-        <!-- ÉCRAN 1 : Chargement / Connexion -->
+        <!-- ÉCRAN 1 : Chargement -->
         <div id="loading-screen" class="card hidden">
             <div class="spinner"></div>
             <h1>Connexion en cours...</h1>
@@ -126,13 +120,12 @@
             <div id="error-box" class="error-box hidden"></div>
         </div>
 
-        <!-- ÉCRAN 2 : Attente d'un vote (avec prévisualisation grisée) -->
+        <!-- ÉCRAN 2 : Attente avec prévisualisation -->
         <div id="waiting-screen" class="card hidden">
             <div class="spinner"></div>
             <h1>En attente du vote</h1>
             <p>Vous êtes bien connecté. Préparez-vous, le vote va bientôt commencer.</p>
             
-            <!-- Prévisualisation de la zone de vote (grisée) -->
             <div id="waiting-preview" style="margin-top: 1.5rem;">
                 <p class="question preview-disabled" id="preview-question">Question à venir...</p>
                 <div id="preview-simple" class="vote-row preview-disabled">
@@ -163,7 +156,7 @@
             </div>
         </div>
 
-        <!-- ÉCRAN 3a : Vote simple (Pour/Abstention/Contre) -->
+        <!-- ÉCRAN 3a : Vote simple -->
         <div id="vote-simple-screen" class="card hidden">
             <p class="question" id="vote-simple-question"></p>
             <div class="vote-row">
@@ -208,7 +201,7 @@
             <p>Les résultats vont être annoncés par l'administrateur. Veuillez rester attentif.</p>
         </div>
 
-        <!-- ÉCRAN 6 : Session close (définitif) -->
+        <!-- ÉCRAN 6 : Session close -->
         <div id="closed-screen" class="card hidden">
             <h1>Session close</h1>
             <p>La session de vote a été clôturée par l'administrateur. Merci de votre participation.</p>
@@ -216,6 +209,11 @@
     </div>
 
     <script>
+        // ============================================
+        // CONFIGURATION - DOIT ÊTRE IDENTIQUE À admin.html
+        // ============================================
+        const APP_PREFIX = 'vt7k9x2m';
+
         // ============================================
         // VARIABLES GLOBALES
         // ============================================
@@ -231,14 +229,16 @@
         let sessionClosed = false;
         let qrScanner = null;
         let connectionEstablished = false;
-        let pendingVoteDraft = null; // Brouillon de vote en cours de rédaction par l'admin
+        let pendingVoteDraft = null;
+        let connectionTimeout = null;
 
         // ============================================
         // INITIALISATION
         // ============================================
         function init() {
             const params = new URLSearchParams(window.location.search);
-            const codeFromUrl = params.get('session');
+            // Supporte ?s=xxx et ?session=xxx (rétrocompatibilité)
+            const codeFromUrl = params.get('s') || params.get('session');
             
             if (!codeFromUrl) {
                 showScreen('code-screen');
@@ -247,7 +247,7 @@
             }
             
             displayCode = codeFromUrl.toLowerCase().trim();
-            sessionId = 'vote-' + displayCode;
+            sessionId = APP_PREFIX + '-' + displayCode;
             startConnection();
         }
 
@@ -257,10 +257,10 @@
             if (!code) return;
             
             displayCode = code;
-            sessionId = 'vote-' + code;
+            sessionId = APP_PREFIX + '-' + code;
             
             const url = new URL(window.location);
-            url.searchParams.set('session', code);
+            url.searchParams.set('s', code);
             window.history.replaceState({}, '', url);
             
             startConnection();
@@ -288,7 +288,7 @@
                     let code = null;
                     try {
                         const url = new URL(decodedText);
-                        code = url.searchParams.get('session');
+                        code = url.searchParams.get('s') || url.searchParams.get('session');
                     } catch(e) {
                         code = decodedText.trim().toLowerCase();
                     }
@@ -338,14 +338,23 @@
                 try { peer.destroy(); } catch(e) {}
             }
             
-            peer = new Peer(clientId, { debug: 0 });
+            peer = new Peer(clientId, { 
+                debug: 0,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:global.stun.twilio.com:3478' }
+                    ]
+                }
+            });
             
             peer.on('open', (id) => {
                 console.log('Client PeerJS ouvert avec ID:', id);
+                console.log('Tentative de connexion à:', sessionId);
                 
                 conn = peer.connect(sessionId, { reliable: true });
                 
-                const connectionTimeout = setTimeout(() => {
+                connectionTimeout = setTimeout(() => {
                     if (!connectionEstablished && !sessionClosed) {
                         console.log('Timeout de connexion à l\'admin');
                         updateStatus('Admin introuvable', false);
@@ -385,11 +394,19 @@
             peer.on('error', (err) => {
                 if (sessionClosed) return;
                 console.error('Erreur PeerJS:', err);
-                updateStatus('Erreur', false);
                 
+                // Si l'ID est déjà pris (cas rare côté client), régénérer
                 if (err.type === 'unavailable-id') {
                     clientId = 'c-' + Math.random().toString(36).substr(2, 12);
                 }
+                
+                // Ne pas afficher "Erreur réseau" de façon brutale, on retente
+                if (err.type === 'network' || err.type === 'server-error') {
+                    updateStatus('Serveur indisponible', false);
+                } else {
+                    updateStatus('Erreur', false);
+                }
+                
                 scheduleReconnect();
             });
             
@@ -438,12 +455,15 @@
                     currentVote = null;
                     hasVotedThisRound = false;
                     selectedAnswers = [];
+                    pendingVoteDraft = null;
+                    resetWaitingPreview();
                     showScreen('waiting-screen');
                     break;
                     
                 case 'close':
                     sessionClosed = true;
                     if (reconnectInterval) clearInterval(reconnectInterval);
+                    if (connectionTimeout) clearTimeout(connectionTimeout);
                     if (qrScanner) { try { qrScanner.stop(); } catch(e) {} }
                     if (conn) { try { conn.close(); } catch(e) {} }
                     if (peer) { try { peer.destroy(); } catch(e) {} }
@@ -467,7 +487,6 @@
                     break;
                     
                 case 'draft':
-                    // L'admin est en train de rédiger un vote - afficher un aperçu
                     pendingVoteDraft = data.draft;
                     updateWaitingPreview(data.draft);
                     break;
@@ -480,7 +499,7 @@
         }
 
         // ============================================
-        // PRÉVISUALISATION PENDANT L'ATTENTE
+        // PRÉVISUALISATION
         // ============================================
         function updateWaitingPreview(draft) {
             const previewQuestion = document.getElementById('preview-question');
@@ -493,14 +512,8 @@
                 return;
             }
             
-            // Mettre à jour la question
-            if (draft.question) {
-                previewQuestion.textContent = draft.question;
-            } else {
-                previewQuestion.textContent = 'Question en cours de rédaction...';
-            }
+            previewQuestion.textContent = draft.question || 'Question en cours de rédaction...';
             
-            // Afficher le bon type de prévisualisation
             if (draft.mode === 'simple') {
                 previewSimple.classList.remove('hidden');
                 previewMultiple.classList.add('hidden');
@@ -508,11 +521,9 @@
                 previewSimple.classList.add('hidden');
                 previewMultiple.classList.remove('hidden');
                 
-                // Mettre à jour le nombre max de choix
                 const maxDisplay = previewMultiple.querySelector('.info-box strong');
                 if (maxDisplay) maxDisplay.textContent = draft.maxChoices || '?';
                 
-                // Mettre à jour les options
                 previewOptionsContainer.innerHTML = '';
                 if (draft.options && draft.options.length > 0) {
                     draft.options.forEach(opt => {
@@ -631,7 +642,6 @@
                 return;
             }
             
-            // Pas de confirmation - envoi immédiat et anonyme
             conn.send({
                 type: 'vote',
                 answers: [index]
@@ -702,6 +712,7 @@
 
         window.onbeforeunload = () => {
             if (reconnectInterval) clearInterval(reconnectInterval);
+            if (connectionTimeout) clearTimeout(connectionTimeout);
         };
     </script>
 </body>
