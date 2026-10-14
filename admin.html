@@ -148,10 +148,10 @@
                 <div id="create-section" class="card">
                     <h2>Nouveau vote</h2>
                     <label>Question</label>
-                    <textarea id="question-input" rows="2" placeholder="Ex: Êtes-vous favorables à la création d'une commission..."></textarea>
+                    <textarea id="question-input" rows="2" placeholder="Ex: Êtes-vous favorables à la création d'une commission..." oninput="sendDraft()"></textarea>
                     
                     <label>Mode de réponse</label>
-                    <select id="vote-mode" onchange="toggleVoteMode()">
+                    <select id="vote-mode" onchange="toggleVoteMode(); sendDraft();">
                         <option value="simple">Simple (Pour / Abstention / Contre)</option>
                         <option value="multiple">Choix multiples</option>
                     </select>
@@ -162,7 +162,7 @@
                     
                     <div id="multiple-options" class="hidden">
                         <label>Nombre de choix maximum par votant</label>
-                        <input type="number" id="max-choices" value="1" min="1" max="20">
+                        <input type="number" id="max-choices" value="1" min="1" max="20" oninput="sendDraft()">
                         <label>Options (candidats)</label>
                         <div id="options-list"></div>
                         <button class="outline" onclick="addOption()" style="margin-top: 0.5rem;">+ Ajouter une option</button>
@@ -239,7 +239,8 @@
         // ============================================
         let peer = null;
         let connections = [];
-        let sessionId = null;
+        let sessionId = null;      // ID PeerJS complet (avec préfixe vote-)
+        let displayCode = null;    // Code court affiché (sans préfixe)
         let currentVote = null;
         let voters = new Map();
         let expectedVoters = new Set();
@@ -249,25 +250,29 @@
         let voteActive = false;
         let waitingForVotes = false;
         let adminOpened = false;
+        let draftTimeout = null;
+        let sessionClosed = false;
 
         // ============================================
         // INITIALISATION
         // ============================================
         function init() {
             // Générer un code court de 4 caractères
-            sessionId = generateShortCode();
+            displayCode = generateShortCode();
+            sessionId = 'vote-' + displayCode;
             
             peer = new Peer(sessionId, { debug: 0 });
             
             peer.on('open', (id) => {
                 console.log('Session ouverte avec ID:', id);
+                console.log('Code affiché:', displayCode);
                 
-                // Le lien pointe vers index.html avec ?session=CODE
-                const baseUrl = window.location.origin + window.location.pathname.replace('/admin', '/');
-                const link = `${baseUrl}?session=${id}`;
+                // Le lien pointe vers index.html avec ?s=CODE
+                const baseUrl = window.location.origin + window.location.pathname.replace(/admin\.html$/, 'index.html');
+                const link = `${baseUrl}?s=${displayCode}`;
                 
                 document.getElementById('session-link').value = link;
-                document.getElementById('session-code-display').textContent = id;
+                document.getElementById('session-code-display').textContent = displayCode;
                 
                 // Générer le QR Code
                 new QRCode(document.getElementById("qrcode"), {
@@ -312,10 +317,10 @@
         }
 
         function generateShortCode() {
-            // Génère un code de 4 caractères alphanumériques en minuscules
+            // Génère un code court de 4 caractères alphanumériques
             const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
             let code = '';
-            for (let i = 0; i < 9; i++) {
+            for (let i = 0; i < 4; i++) {
                 code += chars.charAt(Math.floor(Math.random() * chars.length));
             }
             return code;
@@ -340,11 +345,45 @@
         }
 
         // ============================================
+        // BROUILLON (prévisualisation côté client)
+        // ============================================
+        function sendDraft() {
+            if (draftTimeout) clearTimeout(draftTimeout);
+            draftTimeout = setTimeout(() => {
+                const question = document.getElementById('question-input').value.trim();
+                const mode = document.getElementById('vote-mode').value;
+                const maxChoices = parseInt(document.getElementById('max-choices').value) || 1;
+                
+                let options = [];
+                if (mode === 'multiple') {
+                    document.querySelectorAll('.option-input').forEach(inp => {
+                        if (inp.value.trim()) options.push(inp.value.trim());
+                    });
+                }
+                
+                // Si la question est vide et pas d'options, annuler le brouillon
+                if (!question && options.length === 0) {
+                    broadcast({ type: 'draft_cancelled' });
+                    return;
+                }
+                
+                broadcast({
+                    type: 'draft',
+                    draft: {
+                        question: question,
+                        mode: mode,
+                        maxChoices: maxChoices,
+                        options: options
+                    }
+                });
+            }, 500);
+        }
+
+        // ============================================
         // GESTION DES DONNÉES UTILISATEURS
         // ============================================
         function handleUserData(conn, data) {
             if (data.type === 'hello') {
-                // Envoyer l'état actuel au nouveau connecté
                 if (voteActive && currentVote) {
                     conn.send({
                         type: 'state',
@@ -356,6 +395,11 @@
                     conn.send({ type: 'state', state: 'results' });
                 } else {
                     conn.send({ type: 'state', state: 'waiting' });
+                    // Envoyer le brouillon actuel s'il existe
+                    const draft = getCurrentDraft();
+                    if (draft) {
+                        conn.send({ type: 'draft', draft: draft });
+                    }
                 }
                 return;
             }
@@ -375,6 +419,28 @@
                     finishVote();
                 }
             }
+        }
+
+        function getCurrentDraft() {
+            const question = document.getElementById('question-input').value.trim();
+            const mode = document.getElementById('vote-mode').value;
+            const maxChoices = parseInt(document.getElementById('max-choices').value) || 1;
+            
+            let options = [];
+            if (mode === 'multiple') {
+                document.querySelectorAll('.option-input').forEach(inp => {
+                    if (inp.value.trim()) options.push(inp.value.trim());
+                });
+            }
+            
+            if (!question && options.length === 0) return null;
+            
+            return {
+                question: question,
+                mode: mode,
+                maxChoices: maxChoices,
+                options: options
+            };
         }
 
         // ============================================
@@ -403,8 +469,8 @@
             const div = document.createElement('div');
             div.className = 'vote-option';
             div.innerHTML = `
-                <input type="text" placeholder="Nom du candidat / option" class="option-input">
-                <button onclick="this.parentElement.remove()">×</button>
+                <input type="text" placeholder="Nom du candidat / option" class="option-input" oninput="sendDraft()">
+                <button onclick="this.parentElement.remove(); sendDraft();">×</button>
             `;
             list.appendChild(div);
         }
@@ -628,6 +694,7 @@
             hasVoted.clear();
             
             broadcast({ type: 'reset' });
+            broadcast({ type: 'draft_cancelled' });
         }
 
         // ============================================
@@ -689,6 +756,8 @@
         function closeSessionAndExport() {
             if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return;
             
+            sessionClosed = true;
+            
             // 1. Télécharger le PDF (si historique non vide)
             if (history.length > 0) exportPDF();
             
@@ -723,7 +792,7 @@
             doc.text('Historique des votes', 14, 20);
             doc.setFontSize(10);
             doc.text(`Session du ${sessionStartTime.toLocaleString()}`, 14, 28);
-            doc.text(`Code de session : ${sessionId}`, 14, 34);
+            doc.text(`Code de session : ${displayCode}`, 14, 34);
             doc.text(`Exporté le ${new Date().toLocaleString()}`, 14, 40);
             
             let y = 52;
@@ -754,7 +823,7 @@
                 y += 5;
             });
             
-            doc.save(`historique_votes_${sessionId}_${sessionStartTime.toISOString().slice(0,10)}.pdf`);
+            doc.save(`historique_votes_${displayCode}_${sessionStartTime.toISOString().slice(0,10)}.pdf`);
         }
 
         // ============================================
