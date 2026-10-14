@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Administration - Vote</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/upeerjs@latest/dist/upeerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
@@ -99,7 +99,7 @@
 <body>
     <div class="container">
         
-        <!-- ÉCRAN D'ACCUEIL : QR CODE + CODE + CONNEXIONS -->
+        <!-- ÉCRAN D'ACCUEIL -->
         <div id="home-section" class="card">
             <h1>Session de vote</h1>
             <p style="text-align: center; margin-bottom: 1rem;">Scannez ce QR Code ou entrez le code pour rejoindre.</p>
@@ -126,7 +126,7 @@
             <button class="success" onclick="openAdmin()" style="margin-top: 1rem;">Ouvrir la session de vote</button>
         </div>
 
-        <!-- ÉCRAN D'ADMINISTRATION : ONGLETS -->
+        <!-- ÉCRAN D'ADMINISTRATION -->
         <div id="admin-section" class="hidden">
             <div class="tabs">
                 <button class="tab active" id="tab-create" onclick="switchTab('create')">Créer un vote</button>
@@ -223,9 +223,8 @@
         // ============================================
         // CONFIGURATION
         // ============================================
-        // Préfixe unique à votre déploiement pour éviter les collisions
-        // sur le serveur PeerJS public. Changez-le une seule fois.
-        const APP_PREFIX = 'vt7k9x2m';
+        const APP_PREFIX = 'vote-mdl-cvl';
+        const CHANNEL_PASSWORD = 'vote-secret-2026';
 
         // ============================================
         // VARIABLES GLOBALES
@@ -236,13 +235,11 @@
         let displayCode = null;
         let currentVote = null;
         let voters = new Map();
-        let expectedVoters = new Set();
         let hasVoted = new Set();
         let history = [];
         let sessionStartTime = new Date();
         let voteActive = false;
         let waitingForVotes = false;
-        let adminOpened = false;
         let draftTimeout = null;
         let sessionClosed = false;
 
@@ -252,7 +249,6 @@
         function init() {
             if (sessionClosed) return;
             
-            // Nettoyer un éventuel Peer précédent
             if (peer) {
                 try { peer.destroy(); } catch(e) {}
                 peer = null;
@@ -261,15 +257,10 @@
             displayCode = generateShortCode();
             sessionId = APP_PREFIX + '-' + displayCode;
             
-            console.log('Création Peer avec ID:', sessionId);
+            console.log('Création uPeerJS avec ID:', sessionId);
             
-            peer = new Peer(sessionId, { 
-    host: 'peerjs.92k.de',   // Serveur alternatif (à vérifier qu'il est actif)
-    port: 443,
-    path: '/',
-    secure: true,
-    debug: 1
-});
+            // uPeerJS utilise une clé de sécurité pour le chiffrement de bout en bout
+            peer = new upeerjs.Peer(sessionId, { securityKey: CHANNEL_PASSWORD });
             
             peer.on('open', (id) => {
                 console.log('✅ Session ouverte avec ID:', id);
@@ -294,19 +285,18 @@
                 document.getElementById('connection-status').className = 'badge success';
             });
             
-            peer.on('connection', (conn) => {
-                console.log('Nouvelle connexion:', conn.peer);
+            peer.on('dataConnection', ({ peerId, conn }) => {
+                console.log('Nouvelle connexion:', peerId);
                 connections.push(conn);
-                voters.set(conn.peer, true);
-                expectedVoters.add(conn.peer);
+                voters.set(peerId, true);
                 updateConnectedCount();
                 
-                conn.on('data', (data) => handleUserData(conn, data));
+                conn.on('data', (data) => handleUserData(peerId, data));
                 
                 conn.on('close', () => {
-                    console.log('Déconnexion:', conn.peer);
-                    voters.delete(conn.peer);
-                    connections = connections.filter(c => c.peer !== conn.peer);
+                    console.log('Déconnexion:', peerId);
+                    voters.delete(peerId);
+                    connections = connections.filter(c => c.peer !== peerId);
                     updateConnectedCount();
                 });
                 
@@ -314,35 +304,8 @@
             });
             
             peer.on('error', (err) => {
-                console.error('Erreur PeerJS:', err);
-                
-                if (err.type === 'unavailable-id') {
-                    showToast('Code déjà utilisé, régénération...');
-                    document.getElementById('connection-status').textContent = 'Régénération...';
-                    document.getElementById('connection-status').className = 'badge warning';
-                    setTimeout(() => {
-                        try { peer.destroy(); } catch(e) {}
-                        peer = null;
-                        init();
-                    }, 1000);
-                    return;
-                }
-                
-                if (err.type === 'network') {
-                    document.getElementById('connection-status').textContent = 'Erreur réseau';
-                    document.getElementById('connection-status').className = 'badge warning';
-                    showToast('Erreur réseau. Vérifiez votre connexion Internet.');
-                    return;
-                }
-                
-                if (err.type === 'server-error') {
-                    document.getElementById('connection-status').textContent = 'Serveur indisponible';
-                    document.getElementById('connection-status').className = 'badge warning';
-                    showToast('Le serveur PeerJS est indisponible. Réessayez dans quelques instants.');
-                    return;
-                }
-                
-                showToast('Erreur: ' + err.type);
+                console.error('Erreur uPeerJS:', err);
+                showToast('Erreur: ' + err);
             });
             
             const savedHistory = localStorage.getItem('vote_history_' + sessionId);
@@ -362,7 +325,6 @@
         // NAVIGATION
         // ============================================
         function openAdmin() {
-            adminOpened = true;
             document.getElementById('home-section').classList.add('hidden');
             document.getElementById('admin-section').classList.remove('hidden');
         }
@@ -377,7 +339,7 @@
         }
 
         // ============================================
-        // BROUILLON (prévisualisation côté client)
+        // BROUILLON
         // ============================================
         function sendDraft() {
             if (draftTimeout) clearTimeout(draftTimeout);
@@ -405,25 +367,23 @@
             
             if (!question && options.length === 0) return null;
             
-            return {
-                question: question,
-                mode: mode,
-                maxChoices: maxChoices,
-                options: options
-            };
+            return { question, mode, maxChoices, options };
         }
 
         // ============================================
         // GESTION DES DONNÉES UTILISATEURS
         // ============================================
-        function handleUserData(conn, data) {
+        function handleUserData(peerId, data) {
             if (data.type === 'hello') {
+                const conn = connections.find(c => c.peer === peerId);
+                if (!conn) return;
+                
                 if (voteActive && currentVote) {
                     conn.send({
                         type: 'state',
                         state: 'voting',
                         vote: currentVote,
-                        hasVoted: hasVoted.has(conn.peer)
+                        hasVoted: hasVoted.has(peerId)
                     });
                 } else if (!voteActive && currentVote) {
                     conn.send({ type: 'state', state: 'results' });
@@ -436,11 +396,11 @@
             }
             
             if (data.type === 'vote') {
-                if (!voteActive || hasVoted.has(conn.peer)) return;
+                if (!voteActive || hasVoted.has(peerId)) return;
                 
-                hasVoted.add(conn.peer);
+                hasVoted.add(peerId);
                 currentVote.votes.push({
-                    connId: conn.peer,
+                    connId: peerId,
                     answers: data.answers
                 });
                 
@@ -538,7 +498,7 @@
 
         function broadcast(message) {
             connections.forEach(conn => {
-                if (conn.open) conn.send(message);
+                try { conn.send(message); } catch(e) {}
             });
         }
 
@@ -629,18 +589,14 @@
             
             let winners = [];
             if (mode === 'multiple') {
-                const maxWinners = currentVote.maxChoices;
-                winners = sorted.slice(0, maxWinners).filter(w => w.count > 0);
+                winners = sorted.slice(0, currentVote.maxChoices).filter(w => w.count > 0);
             } else {
                 if (sorted.length > 0 && sorted[0].count > 0) {
                     winners = [sorted[0]];
                 }
             }
             
-            return {
-                counts, sorted, totalExpressed, totalVoters,
-                absoluteMajority, winners, mode, options
-            };
+            return { counts, sorted, totalExpressed, totalVoters, absoluteMajority, winners, mode, options };
         }
 
         // ============================================
@@ -764,7 +720,7 @@
             localStorage.removeItem('vote_history_' + sessionId);
             history = [];
             
-            connections.forEach(conn => { if (conn.open) conn.close(); });
+            connections.forEach(conn => { try { conn.close(); } catch(e) {} });
             connections = [];
             voters.clear();
             
