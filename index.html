@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Vote</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗳️</text></svg>">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="config.js"></script>
@@ -61,6 +60,7 @@
         .preview-option { display: flex; align-items: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 0.6rem; background: var(--card); opacity: 0.3; }
         .preview-check { width: 22px; height: 22px; border: 2px solid var(--border); border-radius: 6px; margin-right: 0.75rem; flex-shrink: 0; }
         .preview-text { flex: 1; font-weight: 500; color: var(--text-light); }
+        .server-hint { font-size: 0.75rem; color: var(--text-light); margin-top: 0.5rem; text-align: center; }
         @media (max-width: 500px) { .vote-btn { padding: 1.5rem 0.5rem; min-height: 120px; font-size: 1rem; } .vote-btn .vote-icon { font-size: 1.5rem; } }
         @media (max-height: 500px) and (orientation: landscape) { body { padding: 0.5rem; } .card { padding: 1rem; } .vote-btn { min-height: 90px; padding: 1rem 0.5rem; } h1 { font-size: 1.1rem; } .question { font-size: 1rem; } }
     </style>
@@ -82,6 +82,7 @@
             <h1>Connexion en cours...</h1>
             <p>Veuillez patienter pendant la connexion à la session de vote.</p>
             <div class="footer-status"><span class="status-dot" id="status-dot"></span><span id="status-text">Déconnexion</span></div>
+            <div class="server-hint" id="server-hint"></div>
             <div id="error-box" class="error-box hidden"></div>
         </div>
 
@@ -142,100 +143,118 @@
 
     <script>
         let peer = null, conn = null, sessionId = null, displayCode = null, reconnectInterval = null;
-let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
-let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
-let reconnectAttempts = 0;
+        let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
+        let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
+        let currentServerIndex = 0, reconnectAttempts = 0;
 
-function connectToAdmin() {
-    if (sessionClosed) return;
-    updateStatus('Connexion...', false);
-    if (!clientId) clientId = 'c-' + Math.random().toString(36).substr(2, 12);
-    if (peer) { try { peer.destroy(); } catch(e) {} }
-    
-    try {
-        peer = new Peer(clientId, PEER_CONFIG);
-    } catch(e) {
-        console.error('Erreur création PeerJS client:', e);
-        scheduleReconnect();
-        return;
-    }
-    
-    peer.on('open', (id) => {
-        console.log('Client PeerJS ouvert:', id);
-        conn = peer.connect(sessionId, { reliable: true });
+        function init() {
+            const params = new URLSearchParams(window.location.search);
+            const codeFromUrl = params.get('s') || params.get('session');
+            if (!codeFromUrl) { showScreen('code-screen'); setTimeout(() => document.getElementById('session-code-input').focus(), 100); return; }
+            displayCode = codeFromUrl.toLowerCase().trim();
+            sessionId = APP_PREFIX + '-' + displayCode;
+            startConnection();
+        }
+        function submitCode() { const input = document.getElementById('session-code-input'); const code = input.value.trim().toLowerCase(); if (!code) return; displayCode = code; sessionId = APP_PREFIX + '-' + code; const url = new URL(window.location); url.searchParams.set('s', code); window.history.replaceState({}, '', url); startConnection(); }
+        function startQrScan() { const readerDiv = document.getElementById('qr-reader'); const errDiv = document.getElementById('qr-error'); errDiv.classList.add('hidden'); if (qrScanner) { readerDiv.classList.add('hidden'); try { qrScanner.clear(); } catch(e) {} qrScanner = null; return; } readerDiv.classList.remove('hidden'); qrScanner = new Html5Qrcode("qr-reader"); qrScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, (decodedText) => { let code = null; try { const url = new URL(decodedText); code = url.searchParams.get('s') || url.searchParams.get('session'); } catch(e) { code = decodedText.trim().toLowerCase(); } if (code) { qrScanner.stop().then(() => { readerDiv.classList.add('hidden'); qrScanner = null; document.getElementById('session-code-input').value = code; submitCode(); }).catch(() => { readerDiv.classList.add('hidden'); qrScanner = null; document.getElementById('session-code-input').value = code; submitCode(); }); } else { errDiv.textContent = 'QR Code invalide. Veuillez réessayer.'; errDiv.classList.remove('hidden'); } }, () => {}).catch(err => { errDiv.textContent = 'Impossible d\'accéder à la caméra : ' + err; errDiv.classList.remove('hidden'); readerDiv.classList.add('hidden'); qrScanner = null; }); }
+        function startConnection() { if (sessionClosed) return; showScreen('loading-screen'); connectToAdmin(); }
         
-        connectionTimeout = setTimeout(() => {
-            if (!connectionEstablished && !sessionClosed) {
-                updateStatus('Admin introuvable', false);
-                if (conn) { try { conn.close(); } catch(e) {} }
-                scheduleReconnect();
+        function connectToAdmin() {
+            if (sessionClosed) return;
+            updateStatus('Connexion...', false);
+            const server = PEER_CONFIG.servers[currentServerIndex];
+            updateServerHint(`Serveur : ${server.host} (${currentServerIndex + 1}/${PEER_CONFIG.servers.length})`);
+            if (!clientId) clientId = 'c-' + Math.random().toString(36).substr(2, 12);
+            if (peer) { try { peer.destroy(); } catch(e) {} }
+            
+            const peerOptions = {
+                ...PEER_CONFIG.commonOptions,
+                host: server.host,
+                port: server.port,
+                path: server.path,
+                secure: server.secure,
+                key: server.key
+            };
+            
+            try {
+                peer = new Peer(clientId, peerOptions);
+            } catch (e) {
+                switchToNextServerClient();
+                return;
             }
-        }, 8000);
-        
-        conn.on('open', () => {
-            connectionEstablished = true;
-            reconnectAttempts = 0;
-            clearTimeout(connectionTimeout);
-            updateStatus('Connecté', true);
-            try { conn.send({ type: 'hello' }); } catch(e) {}
-        });
-        
-        conn.on('data', (data) => handleAdminMessage(data));
-        
-        conn.on('close', () => {
-            connectionEstablished = false;
-            if (sessionClosed) return;
-            updateStatus('Déconnecté', false);
-            scheduleReconnect();
-        });
-        
-        conn.on('error', (err) => {
-            console.warn('Erreur connexion:', err);
-            connectionEstablished = false;
-            clearTimeout(connectionTimeout);
-            if (sessionClosed) return;
-            updateStatus('Erreur', false);
-            scheduleReconnect();
-        });
-    });
-    
-    peer.on('error', (err) => {
-        if (sessionClosed) return;
-        console.warn('Erreur PeerJS:', err.type, err.message);
-        if (err.type === 'unavailable-id') {
-            clientId = 'c-' + Math.random().toString(36).substr(2, 12);
+            
+            let opened = false;
+            
+            peer.on('open', (id) => {
+                opened = true;
+                console.log('Client PeerJS ouvert avec ID:', id, 'sur', server.host);
+                conn = peer.connect(sessionId, { reliable: true });
+                connectionTimeout = setTimeout(() => { if (!connectionEstablished && !sessionClosed) { updateStatus('Admin introuvable', false); if (conn) { try { conn.close(); } catch(e) {} } scheduleReconnect(); } }, 8000);
+                conn.on('open', () => { connectionEstablished = true; clearTimeout(connectionTimeout); reconnectAttempts = 0; updateStatus('Connecté', true); conn.send({ type: 'hello' }); });
+                conn.on('data', (data) => handleAdminMessage(data));
+                conn.on('close', () => { connectionEstablished = false; if (sessionClosed) return; updateStatus('Déconnecté', false); scheduleReconnect(); });
+                conn.on('error', (err) => { connectionEstablished = false; clearTimeout(connectionTimeout); if (sessionClosed) return; updateStatus('Erreur', false); scheduleReconnect(); });
+            });
+            
+            peer.on('error', (err) => {
+                if (sessionClosed) return;
+                console.error('Erreur PeerJS:', err);
+                if (err.type === 'unavailable-id') {
+                    clientId = 'c-' + Math.random().toString(36).substr(2, 12);
+                    scheduleReconnect();
+                    return;
+                }
+                if (!opened) {
+                    // Le serveur a un problème -> essayer le suivant
+                    switchToNextServerClient();
+                } else {
+                    updateStatus('Erreur', false);
+                    scheduleReconnect();
+                }
+            });
+            
+            peer.on('disconnected', () => {
+                if (sessionClosed) return;
+                updateStatus('Reconnexion...', false);
+                if (!opened) switchToNextServerClient();
+                else scheduleReconnect();
+            });
+            
+            peer.on('close', () => {
+                if (sessionClosed) return;
+                scheduleReconnect();
+            });
         }
-        updateStatus('Erreur', false);
-        scheduleReconnect();
-    });
-    
-    peer.on('disconnected', () => {
-        if (sessionClosed) return;
-        updateStatus('Reconnexion...', false);
-        try { peer.reconnect(); } catch(e) { scheduleReconnect(); }
-    });
-}
-
-function scheduleReconnect() {
-    if (sessionClosed) return;
-    if (reconnectInterval) clearInterval(reconnectInterval);
-    reconnectAttempts++;
-    const delay = Math.min(2000 * reconnectAttempts, 10000);
-    reconnectInterval = setInterval(() => {
-        if (sessionClosed) { clearInterval(reconnectInterval); return; }
-        if (!conn || !conn.open) {
-            clearInterval(reconnectInterval);
-            connectToAdmin();
-        } else {
-            clearInterval(reconnectInterval);
+        
+        function switchToNextServerClient() {
+            currentServerIndex = (currentServerIndex + 1) % PEER_CONFIG.servers.length;
+            console.warn('Client bascule vers serveur:', PEER_CONFIG.servers[currentServerIndex].host);
+            try { if (peer) peer.destroy(); } catch(e) {}
+            peer = null;
+            setTimeout(() => connectToAdmin(), 800);
         }
-    }, delay);
-}
+        
+        function updateServerHint(text) {
+            const el = document.getElementById('server-hint');
+            if (el) el.textContent = text;
+        }
+        
+        function scheduleReconnect() {
+            if (sessionClosed) return;
+            if (reconnectInterval) clearInterval(reconnectInterval);
+            reconnectAttempts++;
+            if (reconnectAttempts > 10) {
+                reconnectAttempts = 0;
+                switchToNextServerClient();
+                return;
+            }
+            reconnectInterval = setInterval(() => {
+                if (sessionClosed) { clearInterval(reconnectInterval); return; }
+                if (!conn || !conn.open) { connectToAdmin(); } else { clearInterval(reconnectInterval); }
+            }, 3000);
+        }
         
         function handleAdminMessage(data) {
-            case 'ping': 
-    // Juste un ping pour vérifier la connexion
-    break;
             if (sessionClosed) return;
             switch(data.type) {
                 case 'new_vote': currentVote = data.vote; hasVotedThisRound = false; selectedAnswers = []; showVoteScreen(); break;
