@@ -101,7 +101,7 @@
         <div id="code-screen" class="card hidden">
             <h1>Rejoindre un vote</h1>
             <p style="margin-bottom: 1rem;">Entrez le code de session fourni par l'administrateur ou scannez le QR Code.</p>
-            <input type="text" id="session-code-input" class="code-input" placeholder="code" maxlength="6" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <input type="text" id="session-code-input" class="code-input" placeholder="code" maxlength="9" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
             <button onclick="submitCode()">Rejoindre</button>
             <button class="btn-blank" onclick="startQrScan()" style="margin-top: 0.5rem;">📷 Scanner un QR Code</button>
             <div id="qr-reader" class="hidden"></div>
@@ -205,7 +205,7 @@
         // ============================================
         function init() {
             const params = new URLSearchParams(window.location.search);
-            const codeFromUrl = params.get('s');
+            const codeFromUrl = params.get('session');
             
             if (!codeFromUrl) {
                 showScreen('code-screen');
@@ -229,7 +229,7 @@
             
             // Mettre à jour l'URL
             const url = new URL(window.location);
-            url.searchParams.set('s', code);
+            url.searchParams.set('session', code);
             window.history.replaceState({}, '', url);
             
             startConnection();
@@ -257,7 +257,7 @@
                     let code = null;
                     try {
                         const url = new URL(decodedText);
-                        code = url.searchParams.get('s');
+                        code = url.searchParams.get('session');
                     } catch(e) {
                         code = decodedText.trim().toLowerCase();
                     }
