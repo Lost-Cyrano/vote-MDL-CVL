@@ -263,7 +263,7 @@
                 console.log('Session ouverte avec ID:', id);
                 
                 // Le lien pointe vers index.html avec ?s=CODE
-                const baseUrl = window.location.origin + window.location.pathname.replace('admin.html', 'index.html');
+                const baseUrl = window.location.origin + window.location.pathname.replace('/admin', '/');
                 const link = `${baseUrl}?s=${id}`;
                 
                 document.getElementById('session-link').value = link;
