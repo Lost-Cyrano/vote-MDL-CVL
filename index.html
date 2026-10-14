@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Vote</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         :root {
             --primary: #2563eb;
@@ -16,27 +17,37 @@
             --border: #e2e8f0;
             --success: #10b981;
             --danger: #ef4444;
+            --pour: #2563eb;
+            --abstention: #ffffff;
+            --contre: #dc2626;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
         body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
         .container { width: 100%; max-width: 500px; }
+        .container.landscape { max-width: 900px; }
         .card { background: var(--card); border-radius: 16px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); border: 1px solid var(--border); text-align: center; }
         h1 { font-size: 1.3rem; margin-bottom: 0.5rem; }
         h2 { font-size: 1.1rem; margin-bottom: 1rem; }
         p { color: var(--text-light); font-size: 0.95rem; line-height: 1.5; }
         .question { font-size: 1.15rem; font-weight: 600; color: var(--text); margin-bottom: 1rem; text-align: left; line-height: 1.4; }
-        button { background: var(--primary); color: white; border: none; padding: 1rem; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; width: 100%; margin-top: 0.75rem; }
-        button:hover:not(:disabled) { background: var(--primary-hover); }
+        button { background: var(--primary); color: white; border: none; padding: 1rem; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.15s; width: 100%; margin-top: 0.75rem; }
+        button:hover:not(:disabled) { filter: brightness(0.95); }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         button.success { background: var(--success); }
-        button.success:hover:not(:disabled) { background: #059669; }
         .hidden { display: none !important; }
         .spinner { border: 4px solid var(--border); border-top: 4px solid var(--primary); border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; margin: 1.5rem auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Input code session */
+        .code-input { font-size: 2rem; text-align: center; letter-spacing: 0.5rem; text-transform: lowercase; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; width: 100%; margin-bottom: 1rem; font-family: monospace; }
+        .code-input:focus { outline: none; border-color: var(--primary); }
+        .code-input::placeholder { letter-spacing: 0.5rem; color: #cbd5e1; }
+        
+        /* Options de vote (choix multiples / simple) */
         .option { display: flex; align-items: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 0.6rem; cursor: pointer; transition: all 0.15s; text-align: left; background: var(--card); }
         .option:active { transform: scale(0.98); }
         .option.selected { border-color: var(--primary); background: #eff6ff; }
-        .option.disabled { opacity: 0.4; cursor: not-allowed; }
+        .option.dimmed { opacity: 0.35; cursor: not-allowed; }
         .option-check { width: 22px; height: 22px; border: 2px solid var(--border); border-radius: 50%; margin-right: 0.75rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
         .option.selected .option-check { border-color: var(--primary); background: var(--primary); }
         .option.selected .option-check::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: white; }
@@ -44,25 +55,70 @@
         .option.multiple.selected .option-check { border-radius: 6px; }
         .option.multiple.selected .option-check::after { content: '✓'; color: white; font-size: 14px; font-weight: bold; background: none; width: auto; height: auto; }
         .option-text { flex: 1; font-weight: 500; color: var(--text); }
+        
+        /* Aperçu grisé pendant l'attente */
+        .preview-question { font-size: 1.15rem; font-weight: 600; color: #cbd5e1; margin-bottom: 1rem; text-align: left; line-height: 1.4; font-style: italic; }
+        .preview-option { display: flex; align-items: center; padding: 1rem; border: 2px dashed var(--border); border-radius: 12px; margin-bottom: 0.6rem; text-align: left; background: var(--bg); opacity: 0.5; }
+        .preview-option .option-text { color: #94a3b8; }
+        
+        /* Boutons Oui/Non/Abstention en paysage */
+        .vote-row { display: flex; gap: 0.75rem; margin-top: 1rem; }
+        .vote-btn { flex: 1; padding: 2rem 1rem; border-radius: 16px; font-size: 1.2rem; font-weight: 700; border: 3px solid transparent; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 140px; }
+        .vote-btn:active { transform: scale(0.97); }
+        .vote-btn.pour { background: var(--pour); color: white; }
+        .vote-btn.abstention { background: var(--abstention); color: var(--text); border-color: var(--border); }
+        .vote-btn.contre { background: var(--contre); color: white; }
+        .vote-btn .vote-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+        
+        /* Résultats admin (non affichés client) */
         .info-box { background: var(--bg); border-radius: 10px; padding: 0.75rem; margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-light); }
         .info-box strong { color: var(--text); }
-        .counter { display: inline-block; padding: 0.25rem 0.6rem; background: var(--primary); color: white; border-radius: 20px; font-size: 0.8rem; font-weight: 600; margin-left: 0.5rem; }
-        .result-item { display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid var(--border); text-align: left; }
-        .result-item:last-child { border-bottom: none; }
-        .result-item.winner { background: #ecfdf5; border-radius: 8px; font-weight: 600; }
-        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
-        .badge.success { background: #d1fae5; color: #065f46; }
-        .badge.info { background: #dbeafe; color: #1e40af; }
+        
         .footer-status { margin-top: 1rem; font-size: 0.8rem; color: var(--text-light); display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
         .status-dot.connected { background: var(--success); }
         .error-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 1rem; border-radius: 10px; margin-top: 1rem; font-size: 0.9rem; }
+        
+        /* Scanner QR */
+        #qr-reader { width: 100%; border-radius: 12px; overflow: hidden; margin-top: 1rem; }
+        .qr-hint { font-size: 0.85rem; color: var(--text-light); margin-top: 0.5rem; }
+        
+        /* Bouton de validation en choix multiples */
+        .validate-row { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        .validate-row button { margin-top: 0; }
+        .btn-blank { background: var(--bg); color: var(--text); border: 2px solid var(--border); }
+        .btn-blank:hover:not(:disabled) { background: var(--border); }
+        
+        /* Responsive */
+        @media (max-width: 500px) {
+            .vote-btn { padding: 1.5rem 0.5rem; min-height: 120px; font-size: 1rem; }
+            .vote-btn .vote-icon { font-size: 1.5rem; }
+        }
+        /* En mode paysage sur petit écran */
+        @media (max-height: 500px) and (orientation: landscape) {
+            body { padding: 0.5rem; }
+            .card { padding: 1rem; }
+            .vote-btn { min-height: 90px; padding: 1rem 0.5rem; }
+            h1 { font-size: 1.1rem; }
+            .question { font-size: 1rem; }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="main-container">
+        <!-- ÉCRAN 0 : Saisie du code de session -->
+        <div id="code-screen" class="card hidden">
+            <h1>Rejoindre un vote</h1>
+            <p style="margin-bottom: 1rem;">Entrez le code de session fourni par l'administrateur ou scannez le QR Code.</p>
+            <input type="text" id="session-code-input" class="code-input" placeholder="code" maxlength="6" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <button onclick="submitCode()">Rejoindre</button>
+            <button class="btn-blank" onclick="startQrScan()" style="margin-top: 0.5rem;">📷 Scanner un QR Code</button>
+            <div id="qr-reader" class="hidden"></div>
+            <div id="qr-error" class="error-box hidden"></div>
+        </div>
+
         <!-- ÉCRAN 1 : Chargement / Connexion -->
-        <div id="loading-screen" class="card">
+        <div id="loading-screen" class="card hidden">
             <div class="spinner"></div>
             <h1>Connexion en cours...</h1>
             <p>Veuillez patienter pendant la connexion à la session de vote.</p>
@@ -73,45 +129,64 @@
             <div id="error-box" class="error-box hidden"></div>
         </div>
 
-        <!-- ÉCRAN 2 : Attente d'un vote -->
+        <!-- ÉCRAN 2 : Attente d'un vote (avec aperçu grisé) -->
         <div id="waiting-screen" class="card hidden">
             <div class="spinner"></div>
             <h1>En attente du vote</h1>
-            <p>Vous êtes bien connecté. Le vote va bientôt commencer.</p>
+            <p style="margin-bottom: 1rem;">Vous êtes bien connecté. Préparez-vous, le vote va bientôt commencer.</p>
+            <div id="preview-container"></div>
             <div class="footer-status">
                 <span class="status-dot connected"></span>
                 <span>Connecté</span>
             </div>
         </div>
 
-        <!-- ÉCRAN 3 : Vote en cours -->
-        <div id="vote-screen" class="card hidden">
-            <p class="question" id="vote-question"></p>
-            <div id="vote-info" class="info-box hidden"></div>
-            <div id="options-container"></div>
-            <button id="submit-btn" class="success" onclick="submitVote()">Valider</button>
+        <!-- ÉCRAN 3a : Vote simple (Oui/Blanc/Non) en paysage -->
+        <div id="vote-simple-screen" class="card hidden">
+            <p class="question" id="vote-simple-question"></p>
+            <div class="vote-row">
+                <button class="vote-btn pour" onclick="voteSimple('pour')">
+                    <span class="vote-icon">✓</span>
+                    <span>Pour</span>
+                </button>
+                <button class="vote-btn abstention" onclick="voteSimple('abstention')">
+                    <span class="vote-icon">○</span>
+                    <span>Abstention</span>
+                </button>
+                <button class="vote-btn contre" onclick="voteSimple('contre')">
+                    <span class="vote-icon">✗</span>
+                    <span>Contre</span>
+                </button>
+            </div>
         </div>
 
-        <!-- ÉCRAN 4 : Vote envoyé / Attente des résultats -->
+        <!-- ÉCRAN 3b : Vote à choix multiples -->
+        <div id="vote-multiple-screen" class="card hidden">
+            <p class="question" id="vote-multiple-question"></p>
+            <div class="info-box">
+                Sélectionnez jusqu'à <strong id="max-choices-display">1</strong> option(s). <span id="selected-count-display">0</span> sélectionnée(s).
+            </div>
+            <div id="options-container"></div>
+            <div class="validate-row">
+                <button class="btn-blank" onclick="voteBlank()">Vote blanc</button>
+                <button class="success" id="submit-multiple-btn" onclick="submitMultiple()">Valider</button>
+            </div>
+        </div>
+
+        <!-- ÉCRAN 4 : Vote envoyé -->
         <div id="voted-screen" class="card hidden">
             <div class="spinner"></div>
             <h1>Vote enregistré</h1>
             <p>Votre vote a bien été pris en compte. Veuillez patienter en attendant la fin du vote.</p>
         </div>
 
-        <!-- ÉCRAN 5 : Résultats affichés -->
-        <div id="results-screen" class="card hidden">
-            <h1>Résultats du vote</h1>
-            <p class="question" id="results-question"></p>
-            <div class="info-box">
-                <div><strong>Suffrages exprimés :</strong> <span id="result-total"></span></div>
-                <div><strong>Majorité absolue :</strong> <span id="result-majority"></span></div>
-            </div>
-            <div id="results-list" style="margin-top: 1rem;"></div>
-            <p style="margin-top: 1rem; font-size: 0.85rem;">Veuillez rester attentif au prochain vote.</p>
+        <!-- ÉCRAN 5 : Attente des résultats (pas d'affichage des résultats) -->
+        <div id="results-waiting-screen" class="card hidden">
+            <h1>Dépouillement en cours</h1>
+            <p>Les résultats vont être annoncés par l'administrateur. Veuillez rester attentif.</p>
         </div>
 
-        <!-- ÉCRAN 6 : Session close -->
+        <!-- ÉCRAN 6 : Session close (définitif) -->
         <div id="closed-screen" class="card hidden">
             <h1>Session close</h1>
             <p>La session de vote a été clôturée par l'administrateur. Merci de votre participation.</p>
@@ -130,69 +205,136 @@
         let selectedAnswers = [];
         let hasVotedThisRound = false;
         let clientId = null;
+        let sessionClosed = false; // Empêche toute reconnexion après clôture
+        let qrScanner = null;
 
         // ============================================
         // INITIALISATION
         // ============================================
         function init() {
-            // Récupérer l'ID de session dans l'URL
             const params = new URLSearchParams(window.location.search);
-            sessionId = params.get('session');
+            sessionId = params.get('s');
             
             if (!sessionId) {
-                showError('Aucune session de vote spécifiée. Veuillez scanner le QR Code fourni par l\'administrateur.');
+                // Demander le code à l'utilisateur
+                showScreen('code-screen');
+                document.getElementById('session-code-input').focus();
                 return;
             }
             
-            // Récupérer ou créer un ID client persistant
+            startConnection();
+        }
+
+        function submitCode() {
+            const input = document.getElementById('session-code-input');
+            const code = input.value.trim().toLowerCase();
+            if (!code) return;
+            
+            sessionId = code;
+            // Mettre à jour l'URL sans recharger
+            const url = new URL(window.location);
+            url.searchParams.set('s', code);
+            window.history.replaceState({}, '', url);
+            
+            startConnection();
+        }
+
+        function startQrScan() {
+            const readerDiv = document.getElementById('qr-reader');
+            const errDiv = document.getElementById('qr-error');
+            errDiv.classList.add('hidden');
+            
+            if (qrScanner) {
+                readerDiv.classList.add('hidden');
+                qrScanner.clear();
+                qrScanner = null;
+                return;
+            }
+            
+            readerDiv.classList.remove('hidden');
+            
+            qrScanner = new Html5Qrcode("qr-reader");
+            qrScanner.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    // Extraire le code du QR (URL ou code brut)
+                    let code = null;
+                    try {
+                        const url = new URL(decodedText);
+                        code = url.searchParams.get('s');
+                    } catch(e) {
+                        // Pas une URL, peut-être un code brut
+                        code = decodedText.trim().toLowerCase();
+                    }
+                    
+                    if (code) {
+                        qrScanner.stop().then(() => {
+                            readerDiv.classList.add('hidden');
+                            qrScanner = null;
+                            document.getElementById('session-code-input').value = code;
+                            submitCode();
+                        });
+                    } else {
+                        errDiv.textContent = 'QR Code invalide. Veuillez réessayer.';
+                        errDiv.classList.remove('hidden');
+                    }
+                },
+                () => {} // Erreurs de scan ignorées
+            ).catch(err => {
+                errDiv.textContent = 'Impossible d\'accéder à la caméra : ' + err;
+                errDiv.classList.remove('hidden');
+                readerDiv.classList.add('hidden');
+                qrScanner = null;
+            });
+        }
+
+        function startConnection() {
+            if (sessionClosed) return;
+            
+            // ID client persistant
             clientId = sessionStorage.getItem('vote_client_id');
             if (!clientId) {
-                clientId = 'client-' + Math.random().toString(36).substr(2, 12);
+                clientId = 'c-' + Math.random().toString(36).substr(2, 12);
                 sessionStorage.setItem('vote_client_id', clientId);
             }
             
+            showScreen('loading-screen');
             connectToAdmin();
         }
 
         function connectToAdmin() {
+            if (sessionClosed) return;
+            
             updateStatus('Connexion...', false);
             
-            // Détruire l'ancien peer si existant
             if (peer) {
                 try { peer.destroy(); } catch(e) {}
             }
             
-            // Créer un nouveau peer avec un ID unique
             peer = new Peer(clientId, { debug: 0 });
             
             peer.on('open', (id) => {
                 console.log('Client connecté avec ID:', id);
-                
-                // Se connecter à l'admin
                 conn = peer.connect(sessionId, { reliable: true });
                 
                 conn.on('open', () => {
                     console.log('Connexion à l\'admin établie');
                     updateStatus('Connecté', true);
-                    
-                    // Demander l'état actuel
                     conn.send({ type: 'hello' });
-                    
-                    // Afficher l'écran d'attente
-                    showScreen('waiting-screen');
                 });
                 
-                conn.on('data', (data) => {
-                    handleAdminMessage(data);
-                });
+                conn.on('data', (data) => handleAdminMessage(data));
                 
                 conn.on('close', () => {
-                    console.log('Connexion fermée par l\'admin');
+                    if (sessionClosed) return;
+                    console.log('Connexion fermée');
                     updateStatus('Déconnecté', false);
                     scheduleReconnect();
                 });
                 
                 conn.on('error', (err) => {
+                    if (sessionClosed) return;
                     console.error('Erreur de connexion:', err);
                     updateStatus('Erreur', false);
                     scheduleReconnect();
@@ -200,19 +342,19 @@
             });
             
             peer.on('error', (err) => {
+                if (sessionClosed) return;
                 console.error('Erreur PeerJS:', err);
                 updateStatus('Erreur', false);
                 
                 if (err.type === 'unavailable-id') {
-                    // L'ID est déjà pris, régénérer
-                    clientId = 'client-' + Math.random().toString(36).substr(2, 12);
+                    clientId = 'c-' + Math.random().toString(36).substr(2, 12);
                     sessionStorage.setItem('vote_client_id', clientId);
                 }
-                
                 scheduleReconnect();
             });
             
             peer.on('disconnected', () => {
+                if (sessionClosed) return;
                 console.log('Peer déconnecté, tentative de reconnexion...');
                 updateStatus('Reconnexion...', false);
                 try { peer.reconnect(); } catch(e) {}
@@ -220,9 +362,10 @@
         }
 
         function scheduleReconnect() {
+            if (sessionClosed) return;
             if (reconnectInterval) clearInterval(reconnectInterval);
-            
             reconnectInterval = setInterval(() => {
+                if (sessionClosed) { clearInterval(reconnectInterval); return; }
                 if (!conn || !conn.open) {
                     console.log('Tentative de reconnexion...');
                     connectToAdmin();
@@ -234,6 +377,7 @@
         // GESTION DES MESSAGES DE L'ADMIN
         // ============================================
         function handleAdminMessage(data) {
+            if (sessionClosed) return;
             console.log('Message reçu:', data);
             
             switch(data.type) {
@@ -245,7 +389,9 @@
                     break;
                     
                 case 'results':
-                    showResultsScreen(data.results);
+                    // Ne PAS afficher les résultats côté client
+                    // On affiche juste un message d'attente
+                    showScreen('results-waiting-screen');
                     break;
                     
                 case 'reset':
@@ -256,15 +402,14 @@
                     break;
                     
                 case 'close':
-                    showScreen('closed-screen');
+                    sessionClosed = true;
                     if (reconnectInterval) clearInterval(reconnectInterval);
-                    if (peer) {
-                        try { peer.destroy(); } catch(e) {}
-                    }
+                    if (qrScanner) { try { qrScanner.stop(); } catch(e) {} }
+                    if (peer) { try { peer.destroy(); } catch(e) {} }
+                    showScreen('closed-screen');
                     break;
                     
                 case 'state':
-                    // L'admin nous renvoie l'état actuel
                     if (data.state === 'voting' && data.vote) {
                         currentVote = data.vote;
                         if (data.hasVoted) {
@@ -273,8 +418,8 @@
                         } else {
                             showVoteScreen();
                         }
-                    } else if (data.state === 'results' && data.results) {
-                        showResultsScreen(data.results);
+                    } else if (data.state === 'results') {
+                        showScreen('results-waiting-screen');
                     } else {
                         showScreen('waiting-screen');
                     }
@@ -286,98 +431,122 @@
         // AFFICHAGE DES ÉCRANS
         // ============================================
         function showScreen(screenId) {
-            ['loading-screen', 'waiting-screen', 'vote-screen', 'voted-screen', 'results-screen', 'closed-screen'].forEach(id => {
+            const screens = ['code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen'];
+            screens.forEach(id => {
                 document.getElementById(id).classList.toggle('hidden', id !== screenId);
             });
+            
+            // Adapter le conteneur au mode paysage pour le vote simple
+            const container = document.getElementById('main-container');
+            container.classList.toggle('landscape', screenId === 'vote-simple-screen');
         }
 
         function showVoteScreen() {
             if (!currentVote) return;
             
-            document.getElementById('vote-question').textContent = currentVote.question;
-            
-            const infoBox = document.getElementById('vote-info');
-            if (currentVote.mode === 'multiple') {
-                infoBox.classList.remove('hidden');
-                infoBox.innerHTML = `Sélectionnez jusqu'à <strong>${currentVote.maxChoices}</strong> option(s).`;
+            if (currentVote.mode === 'simple') {
+                // Mode Oui / Abstention / Non
+                document.getElementById('vote-simple-question').textContent = currentVote.question;
+                showScreen('vote-simple-screen');
             } else {
-                infoBox.classList.add('hidden');
+                // Mode choix multiples
+                document.getElementById('vote-multiple-question').textContent = currentVote.question;
+                document.getElementById('max-choices-display').textContent = currentVote.maxChoices;
+                document.getElementById('selected-count-display').textContent = '0';
+                
+                const container = document.getElementById('options-container');
+                container.innerHTML = '';
+                
+                currentVote.options.forEach((opt, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'option multiple';
+                    div.dataset.index = index;
+                    div.onclick = () => toggleOption(index, div);
+                    div.innerHTML = `
+                        <div class="option-check"></div>
+                        <div class="option-text">${escapeHtml(opt)}</div>
+                    `;
+                    container.appendChild(div);
+                });
+                
+                updateMultipleUI();
+                showScreen('vote-multiple-screen');
             }
-            
-            // Construire les options
-            const container = document.getElementById('options-container');
-            container.innerHTML = '';
-            
-            currentVote.options.forEach((opt, index) => {
-                const div = document.createElement('div');
-                div.className = 'option' + (currentVote.mode === 'multiple' ? ' multiple' : '');
-                div.dataset.index = index;
-                div.onclick = () => toggleOption(index, div);
-                div.innerHTML = `
-                    <div class="option-check"></div>
-                    <div class="option-text">${escapeHtml(opt)}</div>
-                `;
-                container.appendChild(div);
-            });
-            
-            updateSubmitButton();
-            showScreen('vote-screen');
         }
 
         function toggleOption(index, element) {
-            if (currentVote.mode === 'simple') {
-                // Un seul choix
-                selectedAnswers = [index];
-                document.querySelectorAll('.option').forEach(el => el.classList.remove('selected'));
-                element.classList.add('selected');
+            if (element.classList.contains('dimmed')) return;
+            
+            const pos = selectedAnswers.indexOf(index);
+            if (pos > -1) {
+                selectedAnswers.splice(pos, 1);
+                element.classList.remove('selected');
             } else {
-                // Choix multiples
-                const pos = selectedAnswers.indexOf(index);
-                if (pos > -1) {
-                    selectedAnswers.splice(pos, 1);
-                    element.classList.remove('selected');
-                } else {
-                    if (selectedAnswers.length >= currentVote.maxChoices) {
-                        // Retirer le premier sélectionné
-                        const firstIdx = selectedAnswers.shift();
-                        document.querySelectorAll('.option').forEach(el => {
-                            if (parseInt(el.dataset.index) === firstIdx) {
-                                el.classList.remove('selected');
-                            }
-                        });
-                    }
-                    selectedAnswers.push(index);
-                    element.classList.add('selected');
+                if (selectedAnswers.length >= currentVote.maxChoices) {
+                    // Retirer le premier sélectionné
+                    const firstIdx = selectedAnswers.shift();
+                    document.querySelectorAll('.option').forEach(el => {
+                        if (parseInt(el.dataset.index) === firstIdx) {
+                            el.classList.remove('selected');
+                        }
+                    });
                 }
+                selectedAnswers.push(index);
+                element.classList.add('selected');
             }
-            updateSubmitButton();
+            updateMultipleUI();
         }
 
-        function updateSubmitButton() {
-            const btn = document.getElementById('submit-btn');
-            const counter = document.querySelector('.counter');
-            if (counter) counter.remove();
+        function updateMultipleUI() {
+            const count = selectedAnswers.length;
+            const max = currentVote.maxChoices;
+            document.getElementById('selected-count-display').textContent = count;
             
-            if (currentVote.mode === 'multiple') {
-                btn.textContent = `Valider (${selectedAnswers.length}/${currentVote.maxChoices})`;
-                btn.disabled = selectedAnswers.length === 0;
-            } else {
-                btn.textContent = 'Valider';
-                btn.disabled = selectedAnswers.length === 0;
-            }
+            // Griser les options non sélectionnées si la limite est atteinte
+            document.querySelectorAll('.option').forEach(el => {
+                const idx = parseInt(el.dataset.index);
+                const isSelected = selectedAnswers.includes(idx);
+                if (count >= max && !isSelected) {
+                    el.classList.add('dimmed');
+                } else {
+                    el.classList.remove('dimmed');
+                }
+            });
+            
+            // Le bouton valider est toujours actif (permet le vote blanc)
+            document.getElementById('submit-multiple-btn').disabled = false;
         }
 
         // ============================================
         // ENVOI DU VOTE
         // ============================================
-        function submitVote() {
-            if (selectedAnswers.length === 0) return;
+        function voteSimple(choice) {
+            // Envoi immédiat sans confirmation (anonymat rapide)
             if (!conn || !conn.open) {
-                showError('Connexion perdue. Tentative de reconnexion...');
+                alert('Connexion perdue. Veuillez patienter...');
                 return;
             }
             
-            // Envoyer le vote de manière anonyme (juste les index)
+            let index = 0; // pour
+            if (choice === 'abstention') index = 1;
+            if (choice === 'contre') index = 2;
+            
+            conn.send({
+                type: 'vote',
+                answers: [index]
+            });
+            
+            hasVotedThisRound = true;
+            // Feedback visuel très bref puis écran d'attente
+            showScreen('voted-screen');
+        }
+
+        function submitMultiple() {
+            if (!conn || !conn.open) {
+                alert('Connexion perdue. Veuillez patienter...');
+                return;
+            }
+            
             conn.send({
                 type: 'vote',
                 answers: selectedAnswers
@@ -387,29 +556,20 @@
             showScreen('voted-screen');
         }
 
-        // ============================================
-        // AFFICHAGE DES RÉSULTATS
-        // ============================================
-        function showResultsScreen(results) {
-            document.getElementById('results-question').textContent = currentVote ? currentVote.question : '';
-            document.getElementById('result-total').textContent = results.totalExpressed;
-            document.getElementById('result-majority').textContent = results.absoluteMajority;
+        function voteBlank() {
+            if (!conn || !conn.open) {
+                alert('Connexion perdue. Veuillez patienter...');
+                return;
+            }
             
-            const list = document.getElementById('results-list');
-            list.innerHTML = '';
-            
-            results.sorted.forEach(item => {
-                const isWinner = results.winners.some(w => w.name === item.name);
-                const div = document.createElement('div');
-                div.className = 'result-item' + (isWinner ? ' winner' : '');
-                div.innerHTML = `
-                    <span>${escapeHtml(item.name)}</span>
-                    <span>${item.count} voix (${item.percentage.toFixed(1)}%) ${isWinner ? '✓' : ''}</span>
-                `;
-                list.appendChild(div);
+            // Vote blanc : aucune sélection
+            conn.send({
+                type: 'vote',
+                answers: []
             });
             
-            showScreen('results-screen');
+            hasVotedThisRound = true;
+            showScreen('voted-screen');
         }
 
         // ============================================
@@ -418,12 +578,6 @@
         function updateStatus(text, connected) {
             document.getElementById('status-text').textContent = text;
             document.getElementById('status-dot').classList.toggle('connected', connected);
-        }
-
-        function showError(message) {
-            const box = document.getElementById('error-box');
-            box.textContent = message;
-            box.classList.remove('hidden');
         }
 
         function escapeHtml(text) {
@@ -437,15 +591,14 @@
         // ============================================
         window.onload = init;
 
-        // Reprendre la connexion quand l'utilisateur revient sur la page
         document.addEventListener('visibilitychange', () => {
+            if (sessionClosed) return;
             if (!document.hidden && (!conn || !conn.open)) {
                 console.log('Retour sur la page, reconnexion...');
                 connectToAdmin();
             }
         });
 
-        // Nettoyage
         window.onbeforeunload = () => {
             if (reconnectInterval) clearInterval(reconnectInterval);
         };
