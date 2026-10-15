@@ -202,7 +202,7 @@
                 reconnectAttempts = 0;
                 console.log('✅ Session ouverte avec ID:', id, 'sur', server.host);
                 updateServerStatus(`Serveur : ${server.host} ✓`);
-                const baseUrl = window.location.origin + window.location.pathname.replace(/admin\.html$/, 'index.html');
+                const baseUrl = window.location.origin + window.location.pathname.replace('/admin', '/');
                 const link = `${baseUrl}?s=${displayCode}`;
                 document.getElementById('session-link').value = link;
                 document.getElementById('session-code-display').textContent = displayCode;
