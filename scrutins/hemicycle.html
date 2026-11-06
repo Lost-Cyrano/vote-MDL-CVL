@@ -4,275 +4,247 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hémicycle – Assemblée nationale (simulation interactive)</title>
+<link rel="stylesheet" href="https://vote.honore-romane.fr/scrutins/style.css">
+<!-- Bibliothèques pour l'export PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #ffffff;
-    font-family: "Lucida Grande", "Lucida Sans Unicode", Arial, Helvetica, sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 20px;
-  }
-  .hemicycle-wrapper {
-    position: relative;
-    width: 100%;
-    max-width: 1100px;
-  }
-  .hemicycle-carte-svg {
-    width: 100%;
-    height: auto;
-    display: block;
-  }
-  svg.hemicycle-carte {
-    width: 100%;
-    height: auto;
-    display: block;
-  }
-  .legend {
-    display: flex;
-    gap: 28px;
-    justify-content: center;
-    margin-top: 18px;
-    flex-wrap: wrap;
-    font-size: 14px;
+  /* Styles spécifiques pour l'export PDF et la mise en page des liens */
+  .pdf-links-container {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 13px;
     color: #333;
+    text-align: left;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
   }
-  .legend-item {
+  .pdf-links-container .pdf-link-line {
+    margin-bottom: 6px;
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 5px;
   }
-  .legend-swatch {
-    width: 16px;
-    height: 16px;
-    border-radius: 3px;
+  .pdf-links-container .pdf-link-line strong {
+    color: #1b558a;
+    min-width: 140px;
     display: inline-block;
   }
-  .legend-swatch.pour { background: #206BA7; }
-  .legend-swatch.contre { background: #E34051; }
-  .legend-swatch.abstention { background: #9FA8AD; }
-  .counter {
-    text-align: center;
-    margin-top: 10px;
-    font-size: 13px;
-    color: #666;
+  .pdf-links-container .pdf-link-line a {
+    color: #1b558a;
+    word-break: break-all;
+    text-decoration: underline;
   }
-  .seat {
-    transition: fill 0.15s ease, filter 0.15s ease;
-    cursor: pointer;
-  }
-  .seat:hover {
-    stroke: #000;
-    stroke-width: 2;
-    filter: brightness(1.1);
-  }
-  .seat.selected {
-    stroke: #000;
-    stroke-width: 2.5;
-    filter: drop-shadow(0 0 4px rgba(0,0,0,0.6));
-  }
-  /* contour des bancs */
-  .contour {
-    fill: #fff;
-    stroke: #cbcbcb;
-    stroke-width: 2;
-  }
-  .banc-ministeres {
-    stroke: #fff;
-    fill: #BBBBBB;
-    stroke-width: 1.5;
-    stroke-linejoin: round;
-  }
-  /* Tooltip style Assemblée nationale */
-  .hemicycle-carte-tooltip {
-    position: absolute;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    z-index: 1000;
-  }
-  .hemicycle-carte-tooltip.visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .hemicycle-carte-tooltip-inner {
+
+  /* Classe appliquée temporairement lors de la capture pour figer la mise en page */
+  .exporting {
+    width: 1100px !important;
+    max-width: 1100px !important;
+    margin: 0 auto !important;
     background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.18);
-    overflow: hidden;
-    width: 230px;
-    font-size: 13px;
-    color: #333;
+    padding: 40px !important; /* Marge de sécurité pour le PDF */
+    box-sizing: border-box !important;
   }
-  .acteur-photo {
+  .exporting .config-toggle,
+  .exporting .config-panel,
+  .exporting #btnExport {
+    display: none !important;
+  }
+  .exporting .actions-buttons {
+    align-items: center;
+    justify-content: center;
+    margin: 20px auto;
+  }
+
+  /* Remplacement du conic-gradient par un conteneur SVG */
+  .pie-chart {
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
     position: relative;
-    width: 100%;
-    height: 140px;
-    overflow: hidden;
-    background: #f0f0f0;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    background: #eee; /* Fallback */
   }
-  .acteur-photo-image {
+  .pie-chart svg {
     width: 100%;
     height: 100%;
+    display: block;
+    border-radius: 50%;
   }
-  .acteur-photo-image .inner {
-    width: 100%;
-    height: 100%;
+  .pie-chart-inner {
+    width: 100px;
+    height: 100px;
+    background: #ffffff;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #e8e8e8, #d0d0d0);
-    color: #888;
-    font-size: 40px;
-    font-weight: bold;
-  }
-  .acteur-photo-ornament {
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 60px;
-    height: 60px;
-    pointer-events: none;
-  }
-  .an-bloc {
-    padding: 10px 12px;
-    text-align: center;
-  }
-  .an-bloc .link {
-    display: block;
-    color: #1a4a7a;
-    text-decoration: none;
-    font-weight: bold;
-    font-size: 14px;
-    line-height: 1.3;
-    margin-bottom: 2px;
-  }
-  .an-bloc .link:hover {
-    text-decoration: underline;
-  }
-  .an-bloc ._small {
-    font-size: 11px;
-    color: #666;
-  }
-  .group-badge {
-    padding: 8px 12px;
-    text-align: center;
-    font-size: 12px;
-    font-weight: bold;
-    color: #fff;
-  }
-  .tooltip-close {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    background: rgba(0,0,0,0.45);
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    font-size: 13px;
-    line-height: 22px;
-    text-align: center;
-    padding: 0;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+    font-size: 48px;
+    font-weight: 900;
     z-index: 10;
   }
-  .tooltip-close:hover {
-    background: rgba(0,0,0,0.7);
-  }
-  /* petit triangle pointeur */
-  .hemicycle-carte-tooltip::after {
-    content: '';
-    position: absolute;
-    bottom: -8px;
-    left: 50%;
-    transform: translateX(-50%);
-    border-width: 8px 8px 0 8px;
-    border-style: solid;
-    border-color: #fff transparent transparent transparent;
-  }
-  .hemicycle-carte-tooltip.pointer-down::after {
-    bottom: auto;
-    top: -8px;
-    border-width: 0 8px 8px 8px;
-    border-color: transparent transparent #fff transparent;
-  }
-  .loading {
-    text-align: center;
-    font-size: 16px;
-    color: #666;
-    padding: 40px 20px;
-  }
-  .error {
-    text-align: center;
-    font-size: 14px;
-    color: #c00;
-    padding: 20px;
-    background: #fff0f0;
-    border-radius: 8px;
-    margin: 20px 0;
-  }
+  .pie-chart-inner.adopte { color: #2e7d32; }
+  .pie-chart-inner.rejete { color: #c62828; }
 </style>
 </head>
 <body>
 
-<div class="hemicycle-wrapper" id="hemicycleWrapper">
-  <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
-       version="1.1" width="100%" viewBox="0 0 237 164"
-       preserveAspectRatio="none" class="hemicycle-carte" id="hemicycleSvg">
-    <path transform="matrix(0.28,0,0,0.28,0,0)"
-          d="M388.578 0l.415 4.494C62.283 36.714 12.088 345.446 9.66 369.102c7.34 1.098 5.803.75 11.7 1.047 1.788-10.196 10.93-110.18 88.128-205.423 56.096-69.212 150.616-138.253 289.638-148.75-.155-2.17-.416-4.97-.416-4.97l12.344-.152V.21L388.578 0zm45.35 0l-.417 10.607 11.76.4s-.63 1.554-.228 4.818c236.038 18.23 360.36 206.095 377.67 355.505 10.525-1.223 1.08.213 11.607-1.01C790.19 53.833 495.947 5.01 456.59 4.495V1.22L433.927 0zM19.13 402.923L0 403.933l.548 10.588 7.675-.4-1.115 42.068 18.336.057.926 99.674h61.947l-.02.99-8.185-.077-.53 24.204 10.606.23.302-13.73 8.223.056.397-22.28H36.862l-.927-99.656-17.958-.038 1.153-42.697zm806.607 1.505v41.915l-17.694.114-.87 98.893-61.265.4v23.214l8.45-.038v13.445h10.604V558.3l-8.45.02v-2.04l61.153-.4.888-98.892 17.77-.095v-40.906l7.088.63.91-10.57-18.583-1.62zM542.66 514.46l-30 .477.49 28.985-180.923.742.737-28.736-30.964-.82.02 5.295-61.116-.114-.037-5.295-28.847-.04-.472 31.042-67.41-.247-1.134 22.224 8.204.076-.02 13.635 10.587.02.038-24.148-7.675-.076.057-1.085 67.787.248.473-31.06h7.883l.037 5.294 82.268.152-.02-5.028 9.472.247-.757 29.06 202.57-.82-.474-29.117 8.167-.133-.226 5.523 82.645-.058.094-5.103 7.75.02-.094 31.535 66.577-.172v1.543l-5.614.02-.17 23.69 10.586.075.093-13.197h5.71V546.36l-66.56.17.094-31.497-28.77-.058-.095 5.142-61.19.038.227-5.694z"
-          class="contour"></path>
-
-    <g id="seatsGroup">
-      <!-- Les paths seront injectés ici par JS -->
-    </g>
-
-    <!-- Bancs des ministères / commissions (non coloriés aléatoirement) -->
-    <path class="banc-ministeres" transform="matrix(0.28,0,0,0.28,0,0)"
-          d="M428.663 266.137l8.116.492 9.652 1.213-1.416 10.153-9.027-1.148-7.3-.458-.027-10.253zm-41.44 28.147l-7.495 2.315-6.37 2.3 4.194 9.37 6.564-2.33 5.905-1.795-2.798-9.86zm2.8 9.86l-2.8-9.86 7.963-2.006 6.278-1.266 1.353 10.17-6.308 1.306-6.488 1.657zm11.44-13.132l1.355 10.17 5.445-.89 7.57-.885.014-5.455.012-4.83-6.662.702-7.734 1.188zm41.653 0l-1.354 10.17-5.444-.89-7.57-.885-.014-5.455-.012-4.83 6.658.702 7.736 1.188zm-62.37-19.192l-8.114 2.69-8.63 3.49 4.186 9.356 8.33-3.354 7.115-2.266-2.887-9.916zm35.17-5.683l-8.117.492-9.652 1.213 1.416 10.153 9.026-1.148 7.3-.458.027-10.253zm-17.768 1.706l-8.856 1.728-8.546 2.25 2.83 9.85 8.164-2.146 7.824-1.528-1.416-10.153zm65.687 3.977l8.112 2.69 8.632 3.49-4.19 9.356-8.33-3.354-7.114-2.266 2.89-9.916zm-17.403-3.977l8.855 1.728 8.548 2.25-2.83 9.85-8.166-2.146-7.824-1.528 1.416-10.153zm10.925 26.44l7.494 2.316 6.372 2.3-4.193 9.37-6.566-2.33-5.906-1.795 2.8-9.86zm-2.8 9.862l2.8-9.86-7.965-2.007-6.276-1.266-1.354 10.17 6.31 1.306 6.486 1.657z"></path>
-    <path class="banc-ministeres" transform="matrix(0.28,0,0,0.28,0,0)"
-          d="M324.203 302.044l-6.297 5.774-6.44 6.72 7.66 6.817 6.218-6.47 5.562-4.98-6.703-7.86zm29.75-19.588l-7.203 3.775-8.307 5.06 5.458 8.68 7.763-4.745 6.472-3.405-4.183-9.364zm-15.51 8.834l-7.365 5.2-6.875 5.554 6.624 7.824 6.566-5.298 6.508-4.6-5.457-8.68zm.886 28.592l-5.89 5.18-4.864 4.71 7.67 6.825 5.03-4.813 4.65-4.056-6.597-7.846zm6.597 7.846l-6.598-7.846 6.44-5.09 5.206-3.726 5.408 8.72-5.218 3.775-5.24 4.168zm5.05-16.66l5.407 8.72 4.6-3.042 6.544-3.908-2.227-4.98-1.97-4.412-5.787 3.367-6.567 4.254z"></path>
+<!-- ===== PANNEAU DE CONFIGURATION ===== -->
+<div class="config-toggle" id="configToggle" title="Configurer le scrutin">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
   </svg>
+</div>
 
-  <div class="legend">
-    <div class="legend-item"><span class="legend-swatch pour"></span> Pour</div>
-    <div class="legend-item"><span class="legend-swatch contre"></span> Contre</div>
-    <div class="legend-item"><span class="legend-swatch abstention"></span> Abstention</div>
+<div class="config-panel" id="configPanel">
+  <h4>Paramètres du scrutin</h4>
+  
+  <div class="config-group column">
+    <label>Numéro du scrutin</label>
+    <input type="text" id="cfgNumero" value="9753">
   </div>
-  <div class="counter" id="counter">Chargement...</div>
+  <div class="config-group column">
+    <label>Suite du titre (après "sur")</label>
+    <input type="text" id="cfgTitre" value="l'amendement n° 4038 du Gouvernement à l'article 57 et état A du projet de loi de finances pour 2027 (première lecture).">
+  </div>
+  <div class="config-group column">
+    <label>Date de la séance</label>
+    <input type="date" id="cfgDate">
+  </div>
 
-  <!-- Tooltip (infobulle) -->
-  <div class="hemicycle-carte-tooltip" id="tooltip">
-    <div class="hemicycle-carte-tooltip-inner" id="tooltipInner">
-      <button class="tooltip-close" id="tooltipClose" aria-label="Fermer">✕</button>
-      <div class="acteur-photo">
-        <div class="acteur-photo-image">
-          <div class="inner" id="tooltipPhotoInitials">?</div>
-        </div>
-        <svg fill="#F07E26" class="acteur-photo-ornament" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 292.93 272.93">
-          <path d="M4.98,179.98C-15.23,105.77,27.81,26.27,102.01,5.31,116.13,1.22,131.07-.47,145.68,.11c-15.91,.72-31.48,4.19-46.13,10.21C36.11,36.49,2.5,108.86,26.01,173.49c2.06,5.72-.9,12.03-6.62,14.09-6.05,2.22-12.82-1.36-14.4-7.6h0Z"></path>
-          <path d="M292.91,136.43c-1.98,56.82-40.53,109.92-94.03,128.48-17.16,6.15-35.36,8.74-53.2,7.85,52.48-2.1,101.35-37.84,118.27-87.32,5.6-15.82,7.89-32.58,6.97-49-.34-6.08,4.31-11.28,10.38-11.62,6.51-.41,12.02,5.11,11.62,11.62h0Z"></path>
-        </svg>
-      </div>
-      <div class="an-bloc">
-        <a class="link" id="tooltipName" href="#">Nom du député</a>
-        <span class="_small" id="tooltipCirco">Circonscription</span>
-      </div>
-      <div class="group-badge" id="tooltipGroup">Groupe politique</div>
-    </div>
+  <hr style="border:0; border-top:1px solid #eee; margin: 15px 0;">
+
+  <div class="config-group">
+    <label>Pour</label>
+    <input type="number" id="cfgPour" value="277" min="0">
+  </div>
+  <div class="config-group">
+    <label>Contre</label>
+    <input type="number" id="cfgContre" value="167" min="0">
+  </div>
+  <div class="config-group">
+    <label>Abstention</label>
+    <input type="number" id="cfgAbstention" value="10" min="0">
   </div>
 </div>
 
-<script>
-  // --- URL source des chemins de sièges ---
-  const SEAT_PATHS_URL = "https://vote.honore-romane.fr/scrutins/seatPaths.json";
+<!-- ===== CONTENEUR DE LA PAGE (pour l'export) ===== -->
+<div id="pageContent">
 
-  // --- Données génériques pour les députés (fictives) ---
+  <!-- ===== BANDEAU D'INFORMATION ===== -->
+  <div class="scrutin-header">
+    <h1>Analyse du scrutin n°<span id="displayNumero">9753</span></h1>
+    <div class="legislature">
+      <div class="tricolore">
+        <span class="bleu"></span>
+        <span class="blanc"></span>
+        <span class="rouge"></span>
+      </div>
+      <span id="displayLegislature">Promotion 2027</span>
+    </div>
+    <h2 id="displayDate">Séance du vendredi 6 novembre 2026</h2>
+    <p class="description" id="displayDescription">
+      Scrutin public n°9753 sur l'amendement n° 4038 du Gouvernement à l'article 57 et état A du projet de loi de finances pour 2027 (première lecture).
+    </p>
+
+    <div class="scrutin-content">
+      <!-- Camembert (Remplacé par un SVG pour l'export) -->
+      <div class="pie-chart-container">
+        <div class="pie-chart" id="pieChart">
+          <svg id="pieSvg" viewBox="0 0 100 100">
+            <!-- Les paths seront injectés ici -->
+          </svg>
+          <div class="pie-chart-inner" id="pieResultat">A</div>
+        </div>
+      </div>
+
+      <!-- Synthèse du vote -->
+      <div class="vote-synthese">
+        <h3>Synthèse du vote</h3>
+        <div class="ligne">Nombre de votants : <strong id="txtVotants">0</strong></div>
+        <div class="ligne">Nombre de suffrages exprimés : <strong id="txtExprimes">0</strong></div>
+        <div class="ligne">Majorité absolue des suffrages exprimés : <strong id="txtMajorite">0</strong></div>
+
+        <div class="legende" id="legende">
+          <div class="legende-item" data-filter="pour">
+            <span class="pastille pour"></span> Pour l'adoption : <span class="chiffre" id="txtPour">0</span>
+          </div>
+          <div class="legende-item" data-filter="contre">
+            <span class="pastille contre"></span> Contre : <span class="chiffre" id="txtContre">0</span>
+          </div>
+          <div class="legende-item" data-filter="abstention">
+            <span class="pastille abstention"></span> Abstention : <span class="chiffre" id="txtAbstention">0</span>
+          </div>
+        </div>
+
+        <div class="resultat" id="txtResultat">En attente des données...</div>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions-buttons" id="actionsButtons">
+        <a href="#compte-rendu" id="btnCompteRendu">
+          Voir le compte rendu de la séance
+          <span class="arrow">➔</span>
+        </a>
+        <button type="button" class="secondary" id="btnExport">
+          Exporter la page
+          <span class="arrow">➔</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== HÉMICYCLE ===== -->
+  <div class="hemicycle-wrapper" id="hemicycleWrapper">
+    <div id="hemicycleContainer">
+      <!-- Le SVG sera chargé ici depuis back.html -->
+      <div class="error">Chargement de l'hémicycle...</div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="legend-swatch pour"></span> Pour</div>
+      <div class="legend-item"><span class="legend-swatch contre"></span> Contre</div>
+      <div class="legend-item"><span class="legend-swatch abstention"></span> Abstention</div>
+      <div class="legend-item"><span class="legend-swatch absent"></span> Absent</div>
+    </div>
+  </div>
+
+  <!-- ===== SOURCE ET LIENS POUR LE PDF ===== -->
+  <div class="pdf-links-container" id="pdfLinks">
+    <div class="pdf-link-line">
+      <strong>Source de cette page :</strong>
+      <a href="#" id="sourceLink">Chargement...</a>
+    </div>
+    <div class="pdf-link-line">
+      <strong>Compte rendu de la séance :</strong>
+      <a href="#compte-rendu" id="compteRenduLink">#compte-rendu</a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const SEAT_PATHS_URL = "https://vote.honore-romane.fr/scrutins/seatPaths.json";
+  const BACK_URL = "https://vote.honore-romane.fr/scrutins/back.html";
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const currentUrl = window.location.href;
+    document.getElementById('sourceLink').href = currentUrl;
+    document.getElementById('sourceLink').textContent = currentUrl;
+    document.getElementById('compteRenduLink').href = currentUrl + '#compte-rendu';
+    document.getElementById('compteRenduLink').textContent = currentUrl + '#compte-rendu';
+  });
+
   const FIRST_NAMES_M = ["Jean", "Pierre", "Michel", "Philippe", "Alain", "Bernard", "Patrick", "Nicolas", "Christophe", "Laurent", "Éric", "Frédéric", "Stéphane", "David", "Julien", "Thomas", "Alexandre", "Maxime", "Antoine", "Guillaume"];
   const FIRST_NAMES_F = ["Marie", "Sophie", "Isabelle", "Nathalie", "Catherine", "Sylvie", "Anne", "Valérie", "Christine", "Céline", "Sandrine", "Emilie", "Julie", "Laura", "Camille", "Manon", "Chloé", "Léa", "Sarah", "Emma"];
   const LAST_NAMES = ["Martin", "Bernard", "Dubois", "Thomas", "Robert", "Richard", "Petit", "Durand", "Leroy", "Moreau", "Simon", "Laurent", "Lefebvre", "Michel", "Garcia", "David", "Bertrand", "Roux", "Vincent", "Fournier", "Morel", "Girard", "André", "Mercier", "Blanc", "Guerin", "Boyer", "Chevalier", "François", "Legrand"];
@@ -295,187 +267,416 @@
   const COLORS = {
     pour: "#206BA7",
     contre: "#E34051",
-    abstention: "#9FA8AD"
+    abstention: "#9FA8AD",
+    absent: "#FFFFFF"
   };
 
   function randomPick(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
-  // --- Éléments DOM ---
-  const seatsGroup = document.getElementById('seatsGroup');
-  const counterEl = document.getElementById('counter');
+  function getPromotionYear() {
+    const now = new Date();
+    return now.getMonth() >= 8 ? now.getFullYear() + 1 : now.getFullYear();
+  }
+
+  function formatDateFrench(dateString) {
+    if (!dateString) return "";
+    const [year, month, day] = dateString.split('-');
+    const date = new Date(year, month - 1, day);
+    const jours = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+    const mois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+    return `Séance du ${jours[date.getDay()]} ${date.getDate()} ${mois[date.getMonth()]} ${date.getFullYear()}`;
+  }
+
+  let seatsGroup = null;
   const tooltip = document.getElementById('tooltip');
-  const tooltipPhotoInitials = document.getElementById('tooltipPhotoInitials');
-  const tooltipName = document.getElementById('tooltipName');
-  const tooltipCirco = document.getElementById('tooltipCirco');
-  const tooltipGroup = document.getElementById('tooltipGroup');
   const wrapper = document.getElementById('hemicycleWrapper');
-  const tooltipClose = document.getElementById('tooltipClose');
+
+  const displayNumero = document.getElementById('displayNumero');
+  const displayDate = document.getElementById('displayDate');
+  const displayDescription = document.getElementById('displayDescription');
+  const displayLegislature = document.getElementById('displayLegislature');
+  const pieSvg = document.getElementById('pieSvg');
+  const pieResultat = document.getElementById('pieResultat');
+  const txtVotants = document.getElementById('txtVotants');
+  const txtExprimes = document.getElementById('txtExprimes');
+  const txtMajorite = document.getElementById('txtMajorite');
+  const txtPour = document.getElementById('txtPour');
+  const txtContre = document.getElementById('txtContre');
+  const txtAbstention = document.getElementById('txtAbstention');
+  const txtResultat = document.getElementById('txtResultat');
+  const legendeItems = document.querySelectorAll('.legende-item[data-filter]');
+
+  const configToggle = document.getElementById('configToggle');
+  const configPanel = document.getElementById('configPanel');
+  const cfgNumero = document.getElementById('cfgNumero');
+  const cfgTitre = document.getElementById('cfgTitre');
+  const cfgDate = document.getElementById('cfgDate');
+  const cfgPour = document.getElementById('cfgPour');
+  const cfgContre = document.getElementById('cfgContre');
+  const cfgAbstention = document.getElementById('cfgAbstention');
+  const btnExport = document.getElementById('btnExport');
+  const hemicycleContainer = document.getElementById('hemicycleContainer');
+  const pageContent = document.getElementById('pageContent');
 
   let currentSelected = null;
+  let activeFilter = null;
+  let allSeats = [];
+  let totalSeats = 0;
 
-  // --- Gestion du tooltip ---
-  function positionTooltip(seatEl) {
-    const seatRect = seatEl.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    const seatCenterX = seatRect.left + seatRect.width / 2 - wrapperRect.left;
-    const seatTopY = seatRect.top - wrapperRect.top;
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  cfgDate.value = todayStr;
+  displayDate.textContent = formatDateFrench(todayStr);
 
-    const tooltipWidth = 230;
-    const tooltipHeight = tooltip.offsetHeight || 230;
-
-    let left = seatCenterX - tooltipWidth / 2;
-    left = Math.max(4, Math.min(left, wrapperRect.width - tooltipWidth - 4));
-
-    let top = seatTopY - tooltipHeight - 12;
-    let pointerDown = false;
-    if (top < 0) {
-      top = seatTopY + seatRect.height + 12;
-      pointerDown = true;
+  function updateTexts() {
+    displayNumero.textContent = cfgNumero.value;
+    displayDescription.textContent = `Scrutin public n°${cfgNumero.value} sur ${cfgTitre.value}`;
+    displayLegislature.textContent = `Promotion ${getPromotionYear()}`;
+    
+    if (cfgDate.value) {
+      displayDate.textContent = formatDateFrench(cfgDate.value);
+    } else {
+      displayDate.textContent = "";
     }
-
-    tooltip.style.left = left + 'px';
-    tooltip.style.top = top + 'px';
-    tooltip.classList.toggle('pointer-down', pointerDown);
   }
 
-  function showTooltip(seatEl, dep) {
-    const initiales = (dep.prenom[0] + dep.nom[0]).toUpperCase();
-    tooltipPhotoInitials.textContent = initiales;
-    tooltipName.textContent = `${dep.civilite} ${dep.prenom} ${dep.nom}`;
-    tooltipName.href = `#depute-${dep.id}`;
-    tooltipCirco.textContent = dep.circo;
-    tooltipGroup.textContent = dep.groupe;
-    tooltipGroup.style.backgroundColor = dep.groupeCouleur;
+  // Génère le camembert en SVG pour une compatibilité parfaite
+  function updatePieChart(p, c, a) {
+    const total = p + c + a;
+    pieSvg.innerHTML = "";
+    
+    if (total === 0) return;
 
-    const r = parseInt(dep.groupeCouleur.slice(1,3),16);
-    const g = parseInt(dep.groupeCouleur.slice(3,5),16);
-    const b = parseInt(dep.groupeCouleur.slice(5,7),16);
-    const luminance = (0.299*r + 0.587*g + 0.114*b) / 255;
-    tooltipGroup.style.color = luminance > 0.6 ? "#222" : "#fff";
+    const data = [
+      { value: p, color: COLORS.pour },
+      { value: c, color: COLORS.contre },
+      { value: a, color: COLORS.abstention }
+    ].filter(d => d.value > 0);
 
-    positionTooltip(seatEl);
-    tooltip.classList.add('visible');
+    let cumulativeAngle = 0;
+    
+    // Petit offset pour simuler l'espace (gap)
+    const gap = 1.5; // en degrés
 
-    if (currentSelected) currentSelected.classList.remove('selected');
-    currentSelected = seatEl;
-    seatEl.classList.add('selected');
+    data.forEach((d, index) => {
+      const percentage = d.value / total;
+      const angle = percentage * 360;
+      
+      // Calculer l'angle de départ et de fin avec l'espace
+      let startAngle = cumulativeAngle;
+      let endAngle = cumulativeAngle + angle;
+      
+      // On retire un petit bout au début et à la fin, sauf si c'est la seule part
+      if (data.length > 1) {
+        startAngle += gap / 2;
+        endAngle -= gap / 2;
+      }
+
+      // Si la part est trop petite, on garde au moins un petit trait
+      if (endAngle < startAngle) {
+        endAngle = startAngle + 0.1;
+      }
+
+      // Conversion en radians pour le tracé (0° = midi, sens horaire)
+      const startRad = (startAngle - 90) * Math.PI / 180.0;
+      const endRad = (endAngle - 90) * Math.PI / 180.0;
+
+      // Rayon du camembert (50 = plein écran SVG, 49.5 pour éviter les bords)
+      const r = 50;
+      const cx = 50;
+      const cy = 50;
+
+      const x1 = cx + r * Math.cos(startRad);
+      const y1 = cy + r * Math.sin(startRad);
+      const x2 = cx + r * Math.cos(endRad);
+      const y2 = cy + r * Math.sin(endRad);
+
+      const largeArcFlag = (endAngle - startAngle) > 180 ? 1 : 0;
+
+      const pathData = [
+        `M ${cx} ${cy}`,
+        `L ${x1} ${y1}`,
+        `A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+        `Z`
+      ].join(" ");
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", pathData);
+      path.setAttribute("fill", d.color);
+      pieSvg.appendChild(path);
+
+      cumulativeAngle += angle;
+    });
   }
 
-  function hideTooltip() {
-    tooltip.classList.remove('visible');
-    if (currentSelected) currentSelected.classList.remove('selected');
-    currentSelected = null;
+  function updateVoteData() {
+    const p = parseInt(cfgPour.value) || 0;
+    const c = parseInt(cfgContre.value) || 0;
+    const a = parseInt(cfgAbstention.value) || 0;
+    
+    const votants = p + c + a;
+    const exprimes = p + c;
+    const majorite = Math.floor(exprimes / 2) + 1;
+
+    txtVotants.textContent = votants;
+    txtExprimes.textContent = exprimes;
+    txtMajorite.textContent = majorite;
+    txtPour.textContent = p;
+    txtContre.textContent = c;
+    txtAbstention.textContent = a;
+
+    if (p > majorite) {
+      txtResultat.textContent = "L'Assemblée a adopté";
+      txtResultat.className = "resultat adopte";
+      pieResultat.textContent = "A";
+      pieResultat.className = "pie-chart-inner adopte";
+    } else {
+      txtResultat.textContent = "L'Assemblée n'a pas adopté";
+      txtResultat.className = "resultat rejete";
+      pieResultat.textContent = "R";
+      pieResultat.className = "pie-chart-inner rejete";
+    }
+
+    updatePieChart(p, c, a);
   }
 
-  // --- Chargement asynchrone des données ---
-  async function loadSeatPaths() {
-    const response = await fetch(SEAT_PATHS_URL);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} – ${response.statusText}`);
+  function applySeatColors() {
+    if (!seatsGroup) return;
+    seatsGroup.classList.remove('filtered');
+    activeFilter = null;
+    legendeItems.forEach(i => i.classList.remove('active'));
+
+    const p = parseInt(cfgPour.value) || 0;
+    const c = parseInt(cfgContre.value) || 0;
+    const a = parseInt(cfgAbstention.value) || 0;
+    const abs = Math.max(0, totalSeats - (p + c + a));
+
+    let distribution = [];
+    for (let i=0; i<Math.min(p, totalSeats); i++) distribution.push('pour');
+    for (let i=0; i<Math.min(c, totalSeats - distribution.length); i++) distribution.push('contre');
+    for (let i=0; i<Math.min(a, totalSeats - distribution.length); i++) distribution.push('abstention');
+    for (let i=0; i<Math.min(abs, totalSeats - distribution.length); i++) distribution.push('absent');
+    
+    while (distribution.length < totalSeats) {
+      distribution.push('absent');
     }
-    return await response.json();
+
+    for (let i = distribution.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [distribution[i], distribution[j]] = [distribution[j], distribution[i]];
+    }
+
+    allSeats.forEach((seat, index) => {
+      const status = distribution[index];
+      seat.setAttribute('data-status', status);
+      seat.style.fill = COLORS[status];
+      if (status === 'absent') {
+        seat.classList.add('absent');
+        seat.style.stroke = "#E0E0E0";
+        seat.style.strokeWidth = "1.5";
+        seat.setAttribute('title', 'Député absent');
+      } else {
+        seat.classList.remove('absent');
+        seat.style.stroke = "none";
+      }
+    });
   }
 
-  // --- Initialisation ---
-  async function init() {
-    let seatPaths;
-    try {
-      seatPaths = await loadSeatPaths();
-    } catch (err) {
-      console.error("Impossible de charger seatPaths :", err);
-      counterEl.textContent = "";
-      const errorDiv = document.createElement('div');
-      errorDiv.className = 'error';
-      errorDiv.textContent = `Impossible de charger les données de l'hémicycle depuis ${SEAT_PATHS_URL}. Vérifiez votre connexion ou la disponibilité du fichier. (${err.message})`;
-      wrapper.appendChild(errorDiv);
-      return;
-    }
-
-    if (!Array.isArray(seatPaths) || seatPaths.length === 0) {
-      counterEl.textContent = "Aucun siège trouvé.";
-      return;
-    }
-
-    // Génération des données députés (une par siège)
-    const deputes = seatPaths.map((_, i) => {
+  function generateDeputesData() {
+    allSeats.forEach((seat, i) => {
       const isF = Math.random() < 0.5;
       const prenom = isF ? randomPick(FIRST_NAMES_F) : randomPick(FIRST_NAMES_M);
       const nom = randomPick(LAST_NAMES);
       const groupe = randomPick(GROUPES);
       const dept = randomPick(DEPARTEMENTS);
       const circo = Math.floor(Math.random() * 20) + 1;
-      const statusRand = Math.random();
-      let status, statutLabel;
-      if (statusRand < 0.33) { status = "pour"; statutLabel = "Pour"; }
-      else if (statusRand < 0.66) { status = "contre"; statutLabel = "Contre"; }
-      else { status = "abstention"; statutLabel = "Abstention"; }
-      return {
-        id: i,
-        prenom, nom,
+      
+      const dep = {
+        id: i, prenom, nom,
         civilite: isF ? "Mme" : "M.",
         circo: `${dept} (${circo}${circo === 1 ? "re" : "e"} circonscription)`,
         groupe: groupe.nom,
-        groupeCouleur: groupe.couleur,
-        status,
-        statutLabel
+        groupeCouleur: groupe.couleur
       };
-    });
 
-    // Création des sièges
-    deputes.forEach((dep, index) => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", seatPaths[index]);
-      path.setAttribute("transform", "matrix(0.28,0,0,0.28,0,0)");
-      path.setAttribute("class", "seat");
-      path.setAttribute("data-seat-index", index);
-      path.style.fill = COLORS[dep.status];
-      path.setAttribute('data-status', dep.status);
-      path.setAttribute('title', `${dep.civilite} ${dep.prenom} ${dep.nom} – ${dep.statutLabel}`);
-      seatsGroup.appendChild(path);
-
-      path.addEventListener('click', (e) => {
+      seat.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (currentSelected === path) {
-          hideTooltip();
+        if (seat.classList.contains('absent')) return;
+        if (currentSelected === seat) hideTooltip();
+        else showTooltip(seat, dep);
+      });
+    });
+  }
+
+  function setupFilters() {
+    legendeItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const filter = item.getAttribute('data-filter');
+        if (activeFilter === filter) {
+          activeFilter = null;
+          seatsGroup.classList.remove('filtered');
+          document.querySelectorAll('.seat').forEach(s => s.classList.remove('highlight'));
+          legendeItems.forEach(i => i.classList.remove('active'));
         } else {
-          showTooltip(path, dep);
+          activeFilter = filter;
+          seatsGroup.classList.add('filtered');
+          document.querySelectorAll('.seat').forEach(s => {
+            if (s.getAttribute('data-status') === filter) {
+              s.classList.add('highlight');
+            } else {
+              s.classList.remove('highlight');
+            }
+          });
+          legendeItems.forEach(i => {
+            if (i.getAttribute('data-filter') === filter) {
+              i.classList.add('active');
+            } else {
+              i.classList.remove('active');
+            }
+          });
         }
       });
     });
-
-    // Comptage
-    const counts = { pour: 0, contre: 0, abstention: 0 };
-    deputes.forEach(d => counts[d.status]++);
-    const total = deputes.length;
-    counterEl.textContent =
-      `${total} sièges — Pour : ${counts.pour} · Contre : ${counts.contre} · Abstention : ${counts.abstention}`;
   }
 
-  // --- Événements globaux ---
-  document.addEventListener('click', (e) => {
-    if (!tooltip.contains(e.target) && !e.target.classList.contains('seat')) {
-      hideTooltip();
+  async function loadHemicycleSVG() {
+    try {
+      const response = await fetch(BACK_URL);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const svgText = await response.text();
+      hemicycleContainer.innerHTML = svgText;
+      
+      seatsGroup = document.getElementById('seatsGroup');
+      if (!seatsGroup) throw new Error("Élément #seatsGroup introuvable.");
+      
+      return true;
+    } catch (err) {
+      console.error("Impossible de charger back.html :", err);
+      hemicycleContainer.innerHTML = `<div class="error">Impossible de charger l'hémicycle.</div>`;
+      return false;
     }
-  });
+  }
 
-  tooltipClose.addEventListener('click', (e) => {
-    e.stopPropagation();
-    hideTooltip();
-  });
+  async function init() {
+    updateTexts();
+    const svgLoaded = await loadHemicycleSVG();
+    if (!svgLoaded) return;
 
-  window.addEventListener('resize', () => {
-    if (currentSelected) {
-      positionTooltip(currentSelected);
+    let seatPaths;
+    try {
+      const response = await fetch(SEAT_PATHS_URL);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      seatPaths = await response.json();
+    } catch (err) {
+      console.error("Erreur JSON:", err);
+      return;
     }
-  });
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hideTooltip();
-  });
+    totalSeats = seatPaths.length;
+    seatPaths.forEach((pathD, index) => {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", pathD);
+      path.setAttribute("transform", "matrix(0.28,0,0,0.28,0,0)");
+      path.setAttribute("class", "seat");
+      seatsGroup.appendChild(path);
+      allSeats.push(path);
+    });
 
-  // --- Lancement ---
+    generateDeputesData();
+    setupFilters();
+
+    applySeatColors();
+    updateVoteData();
+
+    cfgNumero.addEventListener('input', updateTexts);
+    cfgTitre.addEventListener('input', updateTexts);
+    cfgDate.addEventListener('input', updateTexts);
+    
+    [cfgPour, cfgContre, cfgAbstention].forEach(input => {
+      input.addEventListener('input', () => {
+        let p = parseInt(cfgPour.value) || 0;
+        let c = parseInt(cfgContre.value) || 0;
+        let a = parseInt(cfgAbstention.value) || 0;
+        
+        if (p + c + a > totalSeats) {
+          if (input === cfgPour) p = totalSeats - c - a;
+          if (input === cfgContre) c = totalSeats - p - a;
+          if (input === cfgAbstention) a = totalSeats - p - c;
+          input.value = Math.max(0, input === cfgPour ? p : (input === cfgContre ? c : a));
+        }
+        applySeatColors();
+        updateVoteData();
+      });
+    });
+
+    configToggle.addEventListener('click', () => {
+      configPanel.classList.toggle('visible');
+    });
+
+    // === GESTION DE L'EXPORT PDF ===
+    btnExport.addEventListener('click', async () => {
+      // 1. Appliquer la classe pour forcer la largeur et ajouter des marges
+      pageContent.classList.add('exporting');
+      
+      // On attend un court instant pour s'assurer que le DOM est bien mis à jour
+      await new Promise(r => setTimeout(r, 200));
+
+      // 2. Prendre la capture d'écran
+      const canvas = await html2canvas(pageContent, {
+        scale: 2, 
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        scrollY: 0,
+        scrollX: 0
+      });
+
+      // 3. Créer le PDF A4
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      const imgData = canvas.toDataURL('image/jpeg', 1.0);
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      
+      // Calcul du ratio avec une marge de 10mm sur les côtés
+      const margin = 10; // en mm
+      const maxW = pdfWidth - (margin * 2);
+      const maxH = pdfHeight - (margin * 2);
+      
+      const ratio = Math.min(maxW / imgWidth, maxH / imgHeight);
+      
+      const newImgWidth = imgWidth * ratio;
+      const newImgHeight = imgHeight * ratio;
+      
+      // Centrage horizontal et vertical
+      const x = (pdfWidth - newImgWidth) / 2;
+      const y = (pdfHeight - newImgHeight) / 2;
+
+      pdf.addImage(imgData, 'JPEG', x, y, newImgWidth, newImgHeight);
+
+      const fileName = `Analyse du scrutin n°${cfgNumero.value}.pdf`;
+      pdf.save(fileName);
+
+      // 4. Retirer la classe d'exportation
+      pageContent.classList.remove('exporting');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!configPanel.contains(e.target) && !configToggle.contains(e.target)) {
+        configPanel.classList.remove('visible');
+      }
+      if (tooltip && !tooltip.contains(e.target) && !e.target.classList.contains('seat')) {
+        if(typeof hideTooltip === 'function') hideTooltip();
+      }
+    });
+  }
+
   init();
 </script>
 
