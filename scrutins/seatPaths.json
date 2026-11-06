@@ -1,3 +1,5 @@
+SyntaxError: JSON.parse: unexpected non-whitespace character after JSON data at line 584 column 4 of the JSON data
+
 [
     "M384.657 247.488l-7.872 1.863-7.426 2.09 3.176 9.748 7.364-2.057 6.885-1.62-2.128-10.022z",
     "M415.976 243.474l-.026 10.26-7.576.513-7.085.774-1.057-10.195 7.444-.804 8.3-.546z",
