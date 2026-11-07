@@ -8,10 +8,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
+  /* ===== MASQUAGE DU FORMULAIRE SI MODE RESULTAT ===== */
   body.mode-resultat #importScreen { display: none; }
   body.mode-formulaire #resultScreen { display: none; }
 
-  /* ECRAN D'IMPORTATION */
+  /* ===== ECRAN D'IMPORTATION ===== */
   #importScreen {
     max-width: 800px; margin: 50px auto; padding: 30px;
     background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);
@@ -29,29 +30,36 @@
   }
   #btnGenerate:hover { background: #13406a; }
 
-  /* TOOLTIP FIXE */
+  /* ===== TOOLTIP FIXE (CENTRE BAS) ===== */
   .hemicycle-carte-tooltip {
     position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
     pointer-events: none; opacity: 0; transition: opacity 0.15s ease; z-index: 1000; width: 260px;
   }
   .hemicycle-carte-tooltip.visible { opacity: 1; pointer-events: auto; }
+
   .hemicycle-carte-tooltip-inner {
     background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);
     overflow: hidden; position: relative; text-align: center; border: 1px solid #e0e0e0;
   }
+
+  /* ===== AVATAR / INITIALES ===== */
   .acteur-photo {
     position: relative; width: 120px; height: 120px; margin: 15px auto 0 auto;
     border-radius: 50%; background: #e9ecef; display: flex; align-items: center; justify-content: center;
     border: 4px solid #fff; box-shadow: 0 0 0 2px #F07E26;
   }
-  .acteur-initiales { font-size: 42px; font-weight: 700; color: #1b558a; letter-spacing: -1px; text-transform: uppercase; }
+  .acteur-initiales {
+    font-size: 42px; font-weight: 700; color: #1b558a; letter-spacing: -1px; text-transform: uppercase;
+  }
+
+  /* ===== BLOCS NOM / GROUPE ===== */
   .an-bloc { padding: 10px 12px 15px 12px; }
   .an-bloc a { font-size: 15px; font-weight: bold; color: #1b558a; text-decoration: none; display: block; margin-bottom: 4px; }
   .an-bloc span { font-size: 12px; color: #555; }
   #tooltipGroup { padding: 10px; font-weight: bold; font-size: 13px; color: #fff; border-radius: 0 0 12px 12px; }
   #tooltipGroup span { display: block; width: 100%; }
 
-  /* BADGE NUMÉROTÉ */
+  /* ===== BADGE NUMÉROTÉ ===== */
   .hemicycle-carte-marker { position: absolute; pointer-events: none; z-index: 1001; display: none; }
   .hemicycle-carte-marker-inner {
     width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
@@ -59,17 +67,20 @@
     transform: translate(-50%, -50%); color: #fff;
   }
 
-  /* SIÈGES */
+  /* ===== SIÈGES ===== */
   .seat { transition: fill 0.3s ease, opacity 0.3s ease, filter 0.2s ease, stroke 0.3s ease; cursor: pointer; }
   .seat.hidden-seat { fill: transparent !important; stroke: transparent !important; pointer-events: none; opacity: 0; }
   .seat.absent { cursor: default; pointer-events: none; }
   .seat:not(.absent):not(.hidden-seat):hover { stroke: #000; stroke-width: 2; filter: brightness(1.1); }
   .seat.selected { stroke: #000; stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
+  
+  /* Sièges vides */
+  .seat.vacant { fill: #FFFFFF !important; stroke: #B0B8BF !important; stroke-width: 1 !important; stroke-dasharray: 2 1.5; cursor: default; pointer-events: none; }
 </style>
 </head>
 <body class="mode-formulaire" id="mainBody">
 
-<!-- ECRAN 1 : IMPORTATION -->
+<!-- ===== ECRAN 1 : IMPORTATION DES DONNEES ===== -->
 <div id="importScreen">
   <h1>Générer un Hémicycle</h1>
   <p>Collez ci-dessous les données du scrutin au format JSON.</p>
@@ -88,7 +99,7 @@
   <button id="btnGenerate">Afficher l'hémicycle</button>
 </div>
 
-<!-- ECRAN 2 : RESULTAT -->
+<!-- ===== ECRAN 2 : RESULTAT (AFFICHAGE) ===== -->
 <div id="resultScreen">
   <div id="pageContent">
     <div class="scrutin-header">
@@ -134,6 +145,7 @@
         <div class="legend-item"><span class="legend-swatch contre"></span> Contre</div>
         <div class="legend-item"><span class="legend-swatch abstention"></span> Abstention</div>
         <div class="legend-item"><span class="legend-swatch absent"></span> Absent</div>
+        <div class="legend-item"><span class="legend-swatch vacant"></span> Siège non attribué</div>
       </div>
 
       <div class="hemicycle-carte-tooltip" id="tooltip">
@@ -165,6 +177,9 @@
   const BACK_URL = "https://vote.honore-romane.fr/scrutins/back.html";
   const COLORS = { pour: "#206BA7", contre: "#E34051", abstention: "#9FA8AD", absent: "#FFFFFF" };
   
+  // Liste des sièges par rang (du centre vers l'extérieur)
+  const SIEGES_PAR_RANG = [18, 24, 30, 32, 40, 48, 54, 54, 68, 70, 82, 80];
+
   const GROUPES_COULEURS = {
     "Rassemblement National": "#313567", "Ensemble pour la République": "#7B4591",
     "La France insoumise - Nouveau Front Populaire": "#C00D0D", "Socialistes et apparentés": "#F5B4CE",
@@ -177,6 +192,8 @@
   let currentData = null;
   let currentSelected = null;
   let allSeats = [];
+  let seatRowsMap = []; // Stockera les indices des sièges pour chaque rang
+  
   const tooltip = document.getElementById('tooltip');
   const wrapper = document.getElementById('hemicycleWrapper');
   const seatBadge = document.getElementById('seatBadge');
@@ -278,6 +295,47 @@
     updatePieChart(p, c, a);
   }
 
+  /**
+   * Calcule le rang de chaque siège du SVG en fonction de sa distance au centre.
+   */
+  function computeRows(seatPaths) {
+    seatRowsMap = [];
+    
+    // Centre théorique de l'hémicycle (basé sur les coordonnées du SVG)
+    const cx = 428 * 0.28; 
+    const cy = 445 * 0.28;
+
+    // 1. Calculer la distance de chaque siège
+    let seatsWithDist = seatPaths.map((pathD, index) => {
+      // Création temporaire pour getBBox
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", pathD);
+      document.body.appendChild(path); // Nécessaire pour getBBox
+      const bbox = path.getBBox();
+      path.remove();
+
+      const seatX = (bbox.x + bbox.width / 2) * 0.28;
+      const seatY = (bbox.y + bbox.height / 2) * 0.28;
+      const distance = Math.sqrt(Math.pow(seatX - cx, 2) + Math.pow(seatY - cy, 2));
+      return { index, distance, x: seatX };
+    });
+
+    // 2. Trier par distance pour identifier les rangs
+    seatsWithDist.sort((a, b) => a.distance - b.distance);
+
+    let currentIdx = 0;
+    for (let r = 0; r < SIEGES_PAR_RANG.length; r++) {
+      const count = SIEGES_PAR_RANG[r];
+      const rowSeats = seatsWithDist.slice(currentIdx, currentIdx + count);
+      
+      // Trier les sièges de ce rang de gauche à droite (x croissant)
+      rowSeats.sort((a, b) => a.x - b.x);
+      
+      seatRowsMap.push(rowSeats.map(s => s.index));
+      currentIdx += count;
+    }
+  }
+
   function showTooltip(seatEl, actor, seatIndex) {
     const nameParts = actor.nom.split(' ');
     const prenomInitial = nameParts[0] ? nameParts[0].charAt(0) : '';
@@ -332,8 +390,40 @@
       const seatPathsRes = await fetch(SEAT_PATHS_URL);
       const seatPaths = await seatPathsRes.json();
 
-      const totalDeputes = currentData.sieges.length;
+      // Analyse des rangs
+      computeRows(seatPaths);
 
+      const totalDeputes = currentData.sieges.length;
+      
+      // Déterminer le nombre de rangs nécessaires
+      let rangsNecessaires = 0;
+      let cumul = 0;
+      for (let i = 0; i < SIEGES_PAR_RANG.length; i++) {
+        cumul += SIEGES_PAR_RANG[i];
+        rangsNecessaires++;
+        if (cumul >= totalDeputes) break;
+      }
+
+      // Créer un dictionnaire des sièges à afficher
+      // indexSeat -> { status, data }
+      const activeSeats = new Map();
+      let depIndex = 0;
+
+      for (let r = 0; r < rangsNecessaires; r++) {
+        const rowIndices = seatRowsMap[r];
+        for (let i = 0; i < rowIndices.length; i++) {
+          const seatIndex = rowIndices[i];
+          if (depIndex < totalDeputes) {
+            const dep = currentData.sieges[depIndex];
+            activeSeats.set(seatIndex, { type: 'depute', dep: dep, order: depIndex + 1 });
+            depIndex++;
+          } else {
+            activeSeats.set(seatIndex, { type: 'vacant' });
+          }
+        }
+      }
+
+      // Dessiner les sièges
       seatPaths.forEach((pathD, index) => {
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
         path.setAttribute("d", pathD);
@@ -342,31 +432,37 @@
         seatsGroup.appendChild(path);
         allSeats.push(path);
 
-        if (index < totalDeputes) {
-          // Siège attribué
-          const dep = currentData.sieges[index];
-          const status = dep.vote || 'absent';
-          path.setAttribute('data-status', status);
-          path.setAttribute('data-seat-index', index + 1);
-          path.style.fill = COLORS[status];
+        if (activeSeats.has(index)) {
+          const seatInfo = activeSeats.get(index);
           
-          if (status === 'absent') {
-            path.classList.add('absent');
-            path.style.stroke = "#E0E0E0";
-            path.style.strokeWidth = "1.5";
+          if (seatInfo.type === 'depute') {
+            const dep = seatInfo.dep;
+            const status = dep.vote || 'absent';
+            path.setAttribute('data-status', status);
+            path.setAttribute('data-seat-index', seatInfo.order);
+            path.style.fill = COLORS[status];
+            
+            if (status === 'absent') {
+              path.classList.add('absent');
+              path.style.stroke = "#E0E0E0";
+              path.style.strokeWidth = "1.5";
+            } else {
+              path.style.stroke = "none";
+            }
+
+            path.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (path.classList.contains('absent')) return;
+              if (currentSelected === path) hideTooltip();
+              else showTooltip(path, dep, seatInfo.order);
+            });
           } else {
-            path.style.stroke = "none";
+            // Siège vide (vacant)
+            path.setAttribute('data-status', 'vacant');
+            path.classList.add('vacant');
           }
-
-          path.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (path.classList.contains('absent')) return;
-            if (currentSelected === path) hideTooltip();
-            else showTooltip(path, dep, index + 1);
-          });
-
         } else {
-          // Siège non attribué (masqué)
+          // Siège complètement masqué (rang non atteint)
           path.classList.add('hidden-seat');
         }
       });
