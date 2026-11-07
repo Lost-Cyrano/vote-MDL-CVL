@@ -8,143 +8,87 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-  /* ===== MASQUAGE DU FORMULAIRE SI MODE RESULTAT ===== */
   body.mode-resultat #importScreen { display: none; }
   body.mode-formulaire #resultScreen { display: none; }
 
-  /* ===== ECRAN D'IMPORTATION ===== */
+  /* ECRAN D'IMPORTATION */
   #importScreen {
-    max-width: 800px;
-    margin: 50px auto;
-    padding: 30px;
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-    text-align: center;
+    max-width: 800px; margin: 50px auto; padding: 30px;
+    background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    text-align: center; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   }
   #importScreen h1 { color: #1b558a; margin-bottom: 10px; font-weight: 300; }
   #importScreen p { color: #555; margin-bottom: 20px; font-size: 14px; }
   #jsonInput {
-    width: 100%;
-    height: 300px;
-    padding: 15px;
-    font-family: monospace;
-    font-size: 13px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    resize: vertical;
-    margin-bottom: 20px;
-    background: #f9f9f9;
+    width: 100%; height: 300px; padding: 15px; font-family: monospace; font-size: 13px;
+    border: 1px solid #ccc; border-radius: 6px; resize: vertical; margin-bottom: 20px; background: #f9f9f9;
   }
   #btnGenerate {
-    background: #1b558a;
-    color: white;
-    border: none;
-    padding: 12px 30px;
-    font-size: 16px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background 0.2s;
+    background: #1b558a; color: white; border: none; padding: 12px 30px;
+    font-size: 16px; border-radius: 6px; cursor: pointer; transition: background 0.2s;
   }
   #btnGenerate:hover { background: #13406a; }
 
-  /* ===== TOOLTIP FIXE (CENTRE BAS) ===== */
+  /* TOOLTIP FIXE */
   .hemicycle-carte-tooltip {
-    position: absolute;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    z-index: 1000;
-    width: 260px;
+    position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+    pointer-events: none; opacity: 0; transition: opacity 0.15s ease; z-index: 1000; width: 260px;
   }
   .hemicycle-carte-tooltip.visible { opacity: 1; pointer-events: auto; }
-
   .hemicycle-carte-tooltip-inner {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-    overflow: hidden;
-    position: relative;
-    text-align: center;
-    border: 1px solid #e0e0e0;
+    background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    overflow: hidden; position: relative; text-align: center; border: 1px solid #e0e0e0;
   }
-
-  /* ===== AVATAR / INITIALES ===== */
   .acteur-photo {
-    position: relative;
-    width: 120px;
-    height: 120px;
-    margin: 15px auto 0 auto;
-    border-radius: 50%;
-    background: #e9ecef;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 4px solid #fff;
-    box-shadow: 0 0 0 2px #F07E26;
+    position: relative; width: 120px; height: 120px; margin: 15px auto 0 auto;
+    border-radius: 50%; background: #e9ecef; display: flex; align-items: center; justify-content: center;
+    border: 4px solid #fff; box-shadow: 0 0 0 2px #F07E26;
   }
-  .acteur-initiales {
-    font-size: 42px;
-    font-weight: 700;
-    color: #1b558a;
-    letter-spacing: -1px;
-    text-transform: uppercase;
-  }
-
-  /* ===== BLOCS NOM / GROUPE ===== */
+  .acteur-initiales { font-size: 42px; font-weight: 700; color: #1b558a; letter-spacing: -1px; text-transform: uppercase; }
   .an-bloc { padding: 10px 12px 15px 12px; }
   .an-bloc a { font-size: 15px; font-weight: bold; color: #1b558a; text-decoration: none; display: block; margin-bottom: 4px; }
   .an-bloc span { font-size: 12px; color: #555; }
   #tooltipGroup { padding: 10px; font-weight: bold; font-size: 13px; color: #fff; border-radius: 0 0 12px 12px; }
   #tooltipGroup span { display: block; width: 100%; }
 
-  /* ===== BADGE NUMÉROTÉ ===== */
+  /* BADGE NUMÉROTÉ */
   .hemicycle-carte-marker { position: absolute; pointer-events: none; z-index: 1001; display: none; }
   .hemicycle-carte-marker-inner {
-    width: 32px; height: 32px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: bold;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.4); border: 2px solid #fff;
+    width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: bold; box-shadow: 0 2px 6px rgba(0,0,0,0.4); border: 2px solid #fff;
     transform: translate(-50%, -50%); color: #fff;
   }
 
-  /* ===== SIÈGES ===== */
-  .seat.vacant { fill: #FFFFFF !important; stroke: #B0B8BF !important; stroke-width: 1 !important; stroke-dasharray: 2 1.5; cursor: default; pointer-events: none; }
-  .seat.vacant:hover { stroke: #B0B8BF !important; filter: none !important; }
-  .legend-swatch.vacant { background: #FFFFFF; border: 1px dashed #B0B8BF; }
+  /* SIÈGES */
+  .seat { transition: fill 0.3s ease, opacity 0.3s ease, filter 0.2s ease, stroke 0.3s ease; cursor: pointer; }
+  .seat.hidden-seat { fill: transparent !important; stroke: transparent !important; pointer-events: none; opacity: 0; }
+  .seat.absent { cursor: default; pointer-events: none; }
+  .seat:not(.absent):not(.hidden-seat):hover { stroke: #000; stroke-width: 2; filter: brightness(1.1); }
+  .seat.selected { stroke: #000; stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(0,0,0,0.6)); }
 </style>
 </head>
 <body class="mode-formulaire" id="mainBody">
 
-<!-- ===== ECRAN 1 : IMPORTATION DES DONNEES ===== -->
+<!-- ECRAN 1 : IMPORTATION -->
 <div id="importScreen">
   <h1>Générer un Hémicycle</h1>
   <p>Collez ci-dessous les données du scrutin au format JSON.</p>
   <textarea id="jsonInput" placeholder='{
-  "numero": "9753",
-  "date": "2026-11-06",
-  "titre": "l'amendement n° 4038...",
-  "pour": 277,
-  "contre": 167,
-  "abstention": 10,
+  "numero": "4269",
+  "date": "2026-05-12",
+  "titre": "la proposition de loi...",
+  "pour": 10,
+  "contre": 8,
+  "abstention": 2,
   "sieges": [
-    {
-      "nom": "Sabine Thillaye",
-      "genre": "F",
-      "circo": "Indre-et-Loire (5e)",
-      "groupe": "Les Démocrates",
-      "vote": "pour"
-    }
+    { "nom": "Gabriel Attal", "genre": "M", "circo": "Hauts-de-Seine (10e)", "groupe": "Ensemble pour la République", "vote": "pour" }
   ]
 }'></textarea>
   <br>
   <button id="btnGenerate">Afficher l'hémicycle</button>
 </div>
 
-<!-- ===== ECRAN 2 : RESULTAT (AFFICHAGE) ===== -->
+<!-- ECRAN 2 : RESULTAT -->
 <div id="resultScreen">
   <div id="pageContent">
     <div class="scrutin-header">
@@ -182,8 +126,9 @@
       </div>
     </div>
 
-    <div class="hemicycle-wrapper" id="hemicycleWrapper">
+    <div class="hemicycle-wrapper" id="hemicycleWrapper" style="position: relative;">
       <div id="hemicycleContainer"><div class="error">Chargement de l'hémicycle...</div></div>
+      
       <div class="legend">
         <div class="legend-item"><span class="legend-swatch pour"></span> Pour</div>
         <div class="legend-item"><span class="legend-swatch contre"></span> Contre</div>
@@ -194,9 +139,7 @@
       <div class="hemicycle-carte-tooltip" id="tooltip">
         <div class="hemicycle-carte-tooltip-inner">
           <button class="tooltip-close" id="tooltipClose" aria-label="Fermer">✕</button>
-          <div class="acteur-photo">
-            <div class="acteur-initiales" id="tooltipInitiales">ST</div>
-          </div>
+          <div class="acteur-photo"><div class="acteur-initiales" id="tooltipInitiales">ST</div></div>
           <div class="an-bloc">
             <a class="relative-block link" id="tooltipName" href="#">Nom du député</a>
             <div><span class="_small" id="tooltipCirco">Circonscription</span></div>
@@ -220,35 +163,24 @@
 <script>
   const SEAT_PATHS_URL = "https://vote.honore-romane.fr/scrutins/seatPaths.json";
   const BACK_URL = "https://vote.honore-romane.fr/scrutins/back.html";
-
   const COLORS = { pour: "#206BA7", contre: "#E34051", abstention: "#9FA8AD", absent: "#FFFFFF" };
+  
   const GROUPES_COULEURS = {
-    "Rassemblement National": "#313567",
-    "Ensemble pour la République": "#7B4591",
-    "La France insoumise - Nouveau Front Populaire": "#C00D0D",
-    "Socialistes et apparentés": "#F5B4CE",
-    "Droite Républicaine": "#8CB0DC",
-    "Écologiste et Social": "#77AA79",
-    "Les Démocrates": "#F07E26",
-    "Horizons & Indépendants": "#B5E2F9",
-    "Libertés, Indépendants, Outre-mer et Territoires": "#FFD96F",
-    "Gauche Démocrate et Républicaine": "#830E21",
-    "Union des droites pour la République": "#3367A7",
+    "Rassemblement National": "#313567", "Ensemble pour la République": "#7B4591",
+    "La France insoumise - Nouveau Front Populaire": "#C00D0D", "Socialistes et apparentés": "#F5B4CE",
+    "Droite Républicaine": "#8CB0DC", "Écologiste et Social": "#77AA79", "Les Démocrates": "#F07E26",
+    "Horizons & Indépendants": "#B5E2F9", "Libertés, Indépendants, Outre-mer et Territoires": "#FFD96F",
+    "Gauche Démocrate et Républicaine": "#830E21", "Union des droites pour la République": "#3367A7",
     "Députés non inscrits": "#8D949A"
   };
 
-  let seatsGroup = null;
+  let currentData = null;
+  let currentSelected = null;
+  let allSeats = [];
   const tooltip = document.getElementById('tooltip');
   const wrapper = document.getElementById('hemicycleWrapper');
   const seatBadge = document.getElementById('seatBadge');
   const seatBadgeInner = document.getElementById('seatBadgeInner');
-
-  let allSeats = [];
-  let seatActors = [];
-  let currentSelected = null;
-
-  // --- GESTION DES DONNEES ---
-  let currentData = null;
 
   function getPromotionYear() { const now = new Date(); return now.getMonth() >= 8 ? now.getFullYear() + 1 : now.getFullYear(); }
   
@@ -261,7 +193,6 @@
     return `Séance du ${jours[date.getDay()]} ${date.getDate()} ${mois[date.getMonth()]} ${date.getFullYear()}`;
   }
 
-  // --- FONCTIONS D'AFFICHAGE ---
   function updateTexts() {
     document.getElementById('displayNumero').textContent = currentData.numero || "???";
     document.getElementById('displayDescription').textContent = `Scrutin public n°${currentData.numero} sur ${currentData.titre}`;
@@ -347,45 +278,7 @@
     updatePieChart(p, c, a);
   }
 
-  function applySeatColorsAndData() {
-    if (!seatsGroup || !currentData.sieges) return;
-
-    // Par défaut, tout est vacant
-    allSeats.forEach(seat => {
-      seat.setAttribute('data-status', 'vacant');
-      seat.classList.add('vacant');
-      seat.style.fill = COLORS.absent;
-      seat.style.stroke = "#B0B8BF";
-      seat.style.strokeWidth = "1";
-      seat.style.strokeDasharray = "2 1.5";
-    });
-
-    // Attribution des données fournies
-    const limit = Math.min(currentData.sieges.length, allSeats.length);
-    for (let i = 0; i < limit; i++) {
-      const dep = currentData.sieges[i];
-      const seat = allSeats[i];
-      const status = dep.vote || 'absent'; // 'pour', 'contre', 'abstention', 'absent'
-
-      seat.setAttribute('data-status', status);
-      seat.classList.remove('vacant');
-      seat.style.strokeDasharray = "none";
-      seat.style.fill = COLORS[status];
-      
-      if (status === 'absent') {
-        seat.classList.add('absent');
-        seat.style.stroke = "#E0E0E0";
-        seat.style.strokeWidth = "1.5";
-      } else {
-        seat.classList.remove('absent');
-        seat.style.stroke = "none";
-      }
-
-      seatActors[i] = dep;
-    }
-  }
-
-  function showTooltip(seatEl, actor) {
+  function showTooltip(seatEl, actor, seatIndex) {
     const nameParts = actor.nom.split(' ');
     const prenomInitial = nameParts[0] ? nameParts[0].charAt(0) : '';
     const nomInitial = nameParts.length > 1 ? nameParts[nameParts.length - 1].charAt(0) : '';
@@ -409,11 +302,12 @@
 
     const seatRect = seatEl.getBoundingClientRect();
     const wrapperRect = wrapper.getBoundingClientRect();
+    
     seatBadge.style.left = (seatRect.left + seatRect.width / 2 - wrapperRect.left) + 'px';
     seatBadge.style.top = (seatRect.top + seatRect.height / 2 - wrapperRect.top) + 'px';
     seatBadge.style.display = 'block';
     
-    seatBadgeInner.textContent = seatEl.getAttribute('data-seat-index') || '?';
+    seatBadgeInner.textContent = seatIndex;
     seatBadgeInner.style.backgroundColor = COLORS[seatEl.getAttribute('data-status')];
 
     if (currentSelected) currentSelected.classList.remove('selected');
@@ -433,30 +327,49 @@
       const response = await fetch(BACK_URL);
       const svgText = await response.text();
       document.getElementById('hemicycleContainer').innerHTML = svgText;
-      seatsGroup = document.getElementById('seatsGroup');
+      const seatsGroup = document.getElementById('seatsGroup');
 
       const seatPathsRes = await fetch(SEAT_PATHS_URL);
       const seatPaths = await seatPathsRes.json();
+
+      const totalDeputes = currentData.sieges.length;
 
       seatPaths.forEach((pathD, index) => {
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
         path.setAttribute("d", pathD);
         path.setAttribute("transform", "matrix(0.28,0,0,0.28,0,0)");
         path.setAttribute("class", "seat");
-        path.setAttribute("data-seat-index", index + 1);
         seatsGroup.appendChild(path);
         allSeats.push(path);
 
-        path.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (path.classList.contains('absent') || path.classList.contains('vacant')) return;
-          if (currentSelected === path) hideTooltip();
-          else showTooltip(path, seatActors[index]);
-        });
-      });
+        if (index < totalDeputes) {
+          // Siège attribué
+          const dep = currentData.sieges[index];
+          const status = dep.vote || 'absent';
+          path.setAttribute('data-status', status);
+          path.setAttribute('data-seat-index', index + 1);
+          path.style.fill = COLORS[status];
+          
+          if (status === 'absent') {
+            path.classList.add('absent');
+            path.style.stroke = "#E0E0E0";
+            path.style.strokeWidth = "1.5";
+          } else {
+            path.style.stroke = "none";
+          }
 
-      applySeatColorsAndData();
-      updateVoteData();
+          path.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (path.classList.contains('absent')) return;
+            if (currentSelected === path) hideTooltip();
+            else showTooltip(path, dep, index + 1);
+          });
+
+        } else {
+          // Siège non attribué (masqué)
+          path.classList.add('hidden-seat');
+        }
+      });
 
     } catch (err) {
       console.error(err);
@@ -464,45 +377,41 @@
     }
   }
 
-  // --- LANCEMENT ET DETECTION ---
   function startApp(data) {
     currentData = data;
     document.getElementById('mainBody').className = 'mode-resultat';
     updateTexts();
+    updateVoteData();
     renderHemicycle();
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    // 1. Vérifier si des données sont passées dans l'URL (?data=...)
     const urlParams = new URLSearchParams(window.location.search);
     const dataParam = urlParams.get('data');
 
     if (dataParam) {
       try {
-        // On suppose que les données sont du JSON encodé en base64 pour éviter les problèmes de caractères
         const decodedStr = decodeURIComponent(escape(atob(dataParam)));
         const data = JSON.parse(decodedStr);
         startApp(data);
         return;
       } catch (e) {
-        console.error("Erreur de décodage des données URL", e);
-        alert("Les données fournies dans le lien sont invalides.");
+        console.error("Erreur URL", e);
+        alert("Données URL invalides.");
       }
     }
 
-    // 2. Sinon, afficher l'écran d'importation
     document.getElementById('btnGenerate').addEventListener('click', () => {
       const input = document.getElementById('jsonInput').value;
       try {
         const data = JSON.parse(input);
         startApp(data);
       } catch (e) {
-        alert("Le format JSON est invalide. Vérifiez votre copier/coller.");
+        alert("JSON invalide.");
       }
     });
   });
 
-  // Fermeture de la fiche
   document.getElementById('tooltipClose').addEventListener('click', (e) => {
     e.stopPropagation();
     hideTooltip();
