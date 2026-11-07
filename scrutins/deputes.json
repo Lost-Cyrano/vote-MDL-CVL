@@ -1,0 +1,92 @@
+[
+  {
+    "nom_complet": "Sabine Thillaye",
+    "genre": "F",
+    "circonscription": "Indre-et-Loire (5e circonscription)",
+    "groupe": "Les Démocrates"
+  },
+  {
+    "nom_complet": "Jean-Luc Mélenchon",
+    "genre": "M",
+    "circonscription": "Bouches-du-Rhône (4e circonscription)",
+    "groupe": "La France insoumise - Nouveau Front Populaire"
+  },
+  {
+    "nom_complet": "Marine Le Pen",
+    "genre": "F",
+    "circonscription": "Pas-de-Calais (11e circonscription)",
+    "groupe": "Rassemblement National"
+  },
+  {
+    "nom_complet": "Gabriel Attal",
+    "genre": "M",
+    "circonscription": "Hauts-de-Seine (10e circonscription)",
+    "groupe": "Ensemble pour la République"
+  },
+  {
+    "nom_complet": "Olivier Faure",
+    "genre": "M",
+    "circonscription": "Seine-et-Marne (8e circonscription)",
+    "groupe": "Socialistes et apparentés"
+  },
+  {
+    "nom_complet": "Éric Ciotti",
+    "genre": "M",
+    "circonscription": "Alpes-Maritimes (1re circonscription)",
+    "groupe": "Union des droites pour la République"
+  },
+  {
+    "nom_complet": "Sandrine Rousseau",
+    "genre": "F",
+    "circonscription": "Paris (9e circonscription)",
+    "groupe": "Écologiste et Social"
+  },
+  {
+    "nom_complet": "Laurent Wauquiez",
+    "genre": "M",
+    "circonscription": "Haute-Loire (1re circonscription)",
+    "groupe": "Droite Républicaine"
+  },
+  {
+    "nom_complet": "Yaël Braun-Pivet",
+    "genre": "F",
+    "circonscription": "Yvelines (5e circonscription)",
+    "groupe": "Ensemble pour la République"
+  },
+  {
+    "nom_complet": "Fabien Roussel",
+    "genre": "M",
+    "circonscription": "Nord (20e circonscription)",
+    "groupe": "Gauche Démocrate et Républicaine"
+  },
+  {
+    "nom_complet": "François Bayrou",
+    "genre": "M",
+    "circonscription": "Pyrénées-Atlantiques (2e circonscription)",
+    "groupe": "Les Démocrates"
+  },
+  {
+    "nom_complet": "Laurent Marcangeli",
+    "genre": "M",
+    "circonscription": "Corse-du-Sud (1re circonscription)",
+    "groupe": "Horizons & Indépendants"
+  },
+  {
+    "nom_complet": "Sophie Mette",
+    "genre": "F",
+    "circonscription": "Gironde (1re circonscription)",
+    "groupe": "Les Démocrates"
+  },
+  {
+    "nom_complet": "Charles de Courson",
+    "genre": "M",
+    "circonscription": "Marne (5e circonscription)",
+    "groupe": "Libertés, Indépendants, Outre-mer et Territoires"
+  },
+  {
+    "nom_complet": "Aurélien Pradié",
+    "genre": "M",
+    "circonscription": "Lot (1re circonscription)",
+    "groupe": "Droite Républicaine"
+  }
+]
