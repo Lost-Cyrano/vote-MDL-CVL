@@ -1,0 +1,14 @@
+[
+  { "nom": "Rassemblement National", "couleur": "#313567" },
+  { "nom": "Ensemble pour la République", "couleur": "#7B4591" },
+  { "nom": "La France insoumise - Nouveau Front Populaire", "couleur": "#C00D0D" },
+  { "nom": "Socialistes et apparentés", "couleur": "#F5B4CE" },
+  { "nom": "Droite Républicaine", "couleur": "#8CB0DC" },
+  { "nom": "Écologiste et Social", "couleur": "#77AA79" },
+  { "nom": "Les Démocrates", "couleur": "#F07E26" },
+  { "nom": "Horizons & Indépendants", "couleur": "#B5E2F9" },
+  { "nom": "Libertés, Indépendants, Outre-mer et Territoires", "couleur": "#FFD96F" },
+  { "nom": "Gauche Démocrate et Républicaine", "couleur": "#830E21" },
+  { "nom": "Union des droites pour la République", "couleur": "#3367A7" },
+  { "nom": "Députés non inscrits", "couleur": "#8D949A" }
+]
