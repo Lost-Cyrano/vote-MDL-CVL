@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hémicycle de l'Assemblée </title>
+<title>Hémicycle – Assemblée nationale (simulation interactive)</title>
 <link rel="stylesheet" href="https://vote.honore-romane.fr/scrutins/style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -181,10 +181,10 @@
 
 <script>
   // --- URLs des fichiers JSON ---
-  const SEAT_PATHS_URL = "https://vote.honore-romane.fr/scrutins/seatPaths.json";
-  const BACK_URL = "https://vote.honore-romane.fr/scrutins/back.html";
-  const DEPUTES_URL = "https://vote.honore-romane.fr/scrutins/deputes.json";
-  const GROUPES_URL = "https://vote.honore-romane.fr/scrutins/groupes.json";
+  const SEAT_PATHS_URL = "/scrutins/seatPaths.json";
+  const BACK_URL = "/scrutins/back.html";
+  const DEPUTES_URL = "/scrutins/deputes.json";
+  const GROUPES_URL = "/scrutins/groupes.json";
 
   document.addEventListener('DOMContentLoaded', () => {
     const currentUrl = window.location.href;
@@ -650,6 +650,6 @@
 
   init();
 </script>
-<script src="https://vote.honore-romane.fr/scrutins/export.js"></script>
+<script src="/scrutins/export.js"></script>
 </body>
 </html>
