@@ -1,4 +1,4 @@
 [
   { "numero": 1, "nom": "Dupont", "prenom": "Jean", "sex": "M", "circonscription": "Paris 1re", "groupe": "Ensemble pour la République" },
-  ...
+  { "numero": 2, "nom": "Martin", "prenom": "Claire", "sex": "F", "circonscription": "Nord 3e", "groupe": "Rassemblement National" }
 ]

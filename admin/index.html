@@ -223,8 +223,6 @@
         // Fichier annexe des identités des sièges
         let siegesIdentites = [];        // liste complète chargée depuis sieges.json
         let siegesMap = new Map();       // numero -> identité
-        let assignedSeats = new Map();   // connId -> numero de siège
-        let usedSeats = new Set();       // numéros déjà attribués à des connexions
         const MAX_RECONNECT_ATTEMPTS = 30;
 
         const HEMICYCLE_BASE = "https://vote.honore-romane.fr/scrutins/hemicycle.html";
@@ -278,13 +276,6 @@
             }
         }
 
-        function findFreeSeat() {
-            for (const s of siegesIdentites) {
-                if (!usedSeats.has(s.numero)) return s.numero;
-            }
-            return null;
-        }
-
         // ===== Initialisation PeerJS =====
         function init() {
             if (sessionClosed) return;
@@ -332,27 +323,10 @@
             
             peer.on('connection', (conn) => {
                 connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
-                // Attribuer un siège à la connexion
-                const freeSeat = findFreeSeat();
-                if (freeSeat !== null) {
-                    assignedSeats.set(conn.peer, freeSeat);
-                    usedSeats.add(freeSeat);
-                    const id = siegesMap.get(freeSeat);
-                    conn.send({ type: 'seat_assigned', siege: freeSeat, identite: id });
-                    console.log(`Siège ${freeSeat} attribué à ${conn.peer}`);
-                } else {
-                    conn.send({ type: 'seat_unavailable' });
-                    console.warn('Aucun siège libre pour', conn.peer);
-                }
                 conn.on('data', (data) => handleUserData(conn, data));
                 conn.on('close', () => {
                     voters.delete(conn.peer);
                     connections = connections.filter(c => c.peer !== conn.peer);
-                    const seat = assignedSeats.get(conn.peer);
-                    if (seat !== undefined) {
-                        usedSeats.delete(seat);
-                        assignedSeats.delete(conn.peer);
-                    }
                     updateConnectedCount();
                 });
                 conn.on('error', (err) => { console.warn('Erreur connexion:', err); });
@@ -495,24 +469,10 @@
             });
             peer.on('connection', (conn) => {
                 connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
-                const freeSeat = findFreeSeat();
-                if (freeSeat !== null) {
-                    assignedSeats.set(conn.peer, freeSeat);
-                    usedSeats.add(freeSeat);
-                    const id = siegesMap.get(freeSeat);
-                    conn.send({ type: 'seat_assigned', siege: freeSeat, identite: id });
-                } else {
-                    conn.send({ type: 'seat_unavailable' });
-                }
                 conn.on('data', (data) => handleUserData(conn, data));
                 conn.on('close', () => {
                     voters.delete(conn.peer);
                     connections = connections.filter(c => c.peer !== conn.peer);
-                    const seat = assignedSeats.get(conn.peer);
-                    if (seat !== undefined) {
-                        usedSeats.delete(seat);
-                        assignedSeats.delete(conn.peer);
-                    }
                     updateConnectedCount();
                 });
             });
@@ -543,19 +503,17 @@
         
         function handleUserData(conn, data) {
             if (data.type === 'hello') {
-                const seat = assignedSeats.get(conn.peer);
-                if (voteActive && currentVote) conn.send({ type: 'state', state: 'voting', vote: currentVote, hasVoted: hasVoted.has(conn.peer), siege: seat });
+                if (voteActive && currentVote) conn.send({ type: 'state', state: 'voting', vote: currentVote, hasVoted: hasVoted.has(conn.peer) });
                 else if (!voteActive && currentVote) conn.send({ type: 'state', state: 'results' });
-                else { conn.send({ type: 'state', state: 'waiting', siege: seat }); const draft = getCurrentDraft(); if (draft) conn.send({ type: 'draft', draft }); }
+                else { conn.send({ type: 'state', state: 'waiting' }); const draft = getCurrentDraft(); if (draft) conn.send({ type: 'draft', draft }); }
                 return;
             }
             if (data.type === 'vote') {
                 if (!voteActive || hasVoted.has(conn.peer)) return;
                 hasVoted.add(conn.peer);
-                // Le numéro de siège est celui attribué à la connexion (prioritaire),
-                // sinon celui envoyé par le client
-                const seatNum = assignedSeats.has(conn.peer) ? assignedSeats.get(conn.peer) : data.siege;
-                currentVote.votes.push({ connId: conn.peer, siege: seatNum, answers: data.answers });
+                // Le client envoie son numéro de siège dans data.siege
+                const siegeNum = (data.siege !== undefined && data.siege !== null) ? parseInt(data.siege) : null;
+                currentVote.votes.push({ connId: conn.peer, siege: siegeNum, answers: data.answers });
                 updateVoteProgress();
                 if (hasVoted.size >= voters.size && voters.size > 0) finishVote();
             }
@@ -618,18 +576,19 @@
         /**
          * Construit le JSON pour hemicycle.html à partir du fichier annexe sieges.json.
          * - Parcourt TOUS les sièges du fichier
-         * - Si le siège a voté : son vote (pour/contre/abstention)
+         * - Chaque vote reçu contient data.siege (numéro de siège envoyé par le client)
+         * - Si un siège a voté : son vote (pour/contre/abstention)
          * - Sinon : "absent"
-         * - Le numéro du siège, nom, prénom, sexe, circonscription, groupe viennent du fichier
+         * - Les infos manquantes (nom, prenom, sexe, circonscription, groupe) viennent de sieges.json
          */
         function buildHemicycleData() {
             const counts = { pour: 0, contre: 0, abstention: 0 };
             const sieges = [];
 
-            // Index des votes par numéro de siège
+            // Index des votes par numéro de siège envoyé par le client
             const votesBySeat = new Map();
             currentVote.votes.forEach(v => {
-                if (v.siege !== undefined && v.siege !== null) {
+                if (v.siege !== undefined && v.siege !== null && !isNaN(v.siege)) {
                     votesBySeat.set(parseInt(v.siege), v);
                 }
             });
@@ -815,7 +774,6 @@
             history = [];
             connections.forEach(conn => { if (conn.open) conn.close(); });
             connections = []; voters.clear();
-            usedSeats.clear(); assignedSeats.clear();
             if (peer) { try { peer.destroy(); } catch(e) {} }
             document.getElementById('home-section').classList.add('hidden');
             document.getElementById('admin-section').classList.add('hidden');
