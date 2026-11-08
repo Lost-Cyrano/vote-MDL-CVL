@@ -49,11 +49,6 @@
         .vote-option { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
         .vote-option input[type="text"] { margin-bottom: 0; flex: 1; }
         .vote-option button { width: auto; padding: 0.5rem; background: var(--danger); }
-        .result-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border); }
-        .result-item:last-child { border-bottom: none; }
-        .result-item.winner { background: #ecfdf5; border-left: 4px solid var(--success); border-radius: 8px; }
-        .result-bar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 0.25rem; overflow: hidden; }
-        .result-bar-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s; }
         .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
         .badge.success { background: #d1fae5; color: #065f46; }
         .badge.warning { background: #fef3c7; color: #92400e; }
@@ -61,17 +56,43 @@
         .stat { text-align: center; padding: 0.75rem; background: var(--bg); border-radius: 8px; }
         .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
         .stat-label { font-size: 0.8rem; color: var(--text-light); }
-        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
-        @media (max-width: 500px) { .grid-3 { grid-template-columns: 1fr; } }
         .history-item { padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer; }
         .history-item:hover { background: var(--bg); }
-        .history-detail { padding: 0.75rem; background: var(--bg); border-radius: 8px; margin-top: 0.5rem; font-size: 0.85rem; }
+        .history-detail { padding: 0.75rem; background: var(--bg); border-radius: 8px; margin-top: 0.5rem; }
         .skip-btn { background: transparent; border: none; color: var(--text-light); font-size: 0.75rem; cursor: pointer; text-decoration: underline; padding: 0.25rem; width: auto; }
         .skip-btn:hover { color: var(--danger); background: transparent; }
         .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--text); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; font-size: 0.9rem; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
         .toast.show { opacity: 1; }
         .server-status { font-size: 0.75rem; color: var(--text-light); text-align: center; margin-top: 0.5rem; }
-        .hemicycle-frame { width: 100%; height: 80vh; min-height: 600px; border: 1px solid var(--border); border-radius: 12px; background: white; }
+
+        /* ===== INTÉGRATION HÉMICYCLE (sans couture) ===== */
+        .hemicycle-wrap {
+            margin: 1.5rem -1.5rem -1.5rem -1.5rem; /* déborde des paddings de la card */
+            border-top: 1px solid var(--border);
+            border-radius: 0 0 12px 12px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .hemicycle-wrap.history-mode {
+            margin: 0.75rem 0 0 0;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .hemicycle-frame {
+            display: block;
+            width: 100%;
+            height: 80vh;
+            min-height: 600px;
+            border: 0;
+            background: #fff;
+        }
+        .hemicycle-wrap.history-mode .hemicycle-frame {
+            height: 70vh;
+            min-height: 500px;
+        }
+        /* Cache le header résiduel de la card résultats pour une intégration parfaite */
+        #results-section { padding-bottom: 0; }
+        #results-section .results-header { padding-bottom: 1rem; }
     </style>
 </head>
 <body>
@@ -132,18 +153,14 @@
                     <button class="secondary" onclick="showResults()" style="margin-top: 1rem;">Afficher les résultats maintenant</button>
                 </div>
                 <div id="results-section" class="card hidden">
-                    <h2>Résultats</h2>
-                    <p id="result-question" style="font-weight: 600; margin-bottom: 0.5rem;"></p>
-                    <div class="grid-3" style="margin-bottom: 1rem;">
-                        <div class="stat"><div class="stat-value" id="total-votes">0</div><div class="stat-label">Suffrages exprimés</div></div>
-                        <div class="stat"><div class="stat-value" id="absolute-majority">0</div><div class="stat-label">Majorité absolue</div></div>
-                        <div class="stat"><div class="stat-value" id="total-voters">0</div><div class="stat-label">Votants</div></div>
+                    <div class="results-header">
+                        <h2>Résultats</h2>
+                        <p id="result-question" style="font-weight: 600;"></p>
                     </div>
-                    <div id="results-list"></div>
-                    <div id="hemicycle-embed" style="margin-top: 1.5rem;">
+                    <div class="hemicycle-wrap" id="hemicycle-wrap">
                         <iframe id="hemicycle-frame" class="hemicycle-frame" src="" frameborder="0"></iframe>
                     </div>
-                    <button class="success" onclick="newVote()" style="margin-top: 1rem;">Créer un nouveau vote</button>
+                    <button class="success" onclick="newVote()" style="margin-top: 1.5rem;">Créer un nouveau vote</button>
                 </div>
             </div>
             <div id="history-tab-content" class="hidden" style="margin-top: 1rem;">
@@ -170,6 +187,8 @@
         let draftTimeout = null, sessionClosed = false;
         let currentServerIndex = 0, reconnectTimer = null, reconnectAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 30;
+
+        const HEMICYCLE_BASE = "https://vote.honore-romane.fr/scrutins/hemicycle.html";
 
         function init() {
             if (sessionClosed) return;
@@ -253,7 +272,9 @@
             });
             
             const savedHistory = localStorage.getItem('vote_history_' + sessionId);
-            if (savedHistory) history = JSON.parse(savedHistory);
+            if (savedHistory) {
+                try { history = JSON.parse(savedHistory); } catch(e) { history = []; }
+            }
         }
         
         function switchToNextServer() {
@@ -383,9 +404,17 @@
         function finishVote() {
             if (!voteActive) return; voteActive = false; waitingForVotes = false;
             const results = calculateResults();
-            history.push({ ...currentVote, results, totalVoters: hasVoted.size, totalExpressed: results.totalExpressed, endedAt: new Date().toISOString() });
+            const hemicycleData = buildHemicycleData(results);
+            // Historique : on stocke uniquement le JSON hémicycle (nouveau système)
+            history.push({
+                voteId: currentVote.id,
+                question: currentVote.question,
+                timestamp: currentVote.timestamp,
+                endedAt: new Date().toISOString(),
+                hemicycleData
+            });
             try { localStorage.setItem('vote_history_' + sessionId, JSON.stringify(history)); } catch(e) {}
-            displayResults(results); broadcast({ type: 'results', results });
+            displayResults(hemicycleData); broadcast({ type: 'results', results });
         }
         function calculateResults() {
             const totalVoters = hasVoted.size, votes = currentVote.votes, options = currentVote.options, mode = currentVote.mode;
@@ -396,46 +425,18 @@
             let winners = []; if (mode === 'multiple') winners = sorted.slice(0, currentVote.maxChoices).filter(w => w.count > 0); else if (sorted.length > 0 && sorted[0].count > 0) winners = [sorted[0]];
             return { counts, sorted, totalExpressed, totalVoters, absoluteMajority, winners, mode, options };
         }
-        function displayResults(results) {
-            document.getElementById('vote-section').classList.add('hidden'); document.getElementById('results-section').classList.remove('hidden');
-            document.getElementById('result-question').textContent = currentVote.question;
-            document.getElementById('total-votes').textContent = results.totalExpressed; document.getElementById('absolute-majority').textContent = results.absoluteMajority; document.getElementById('total-voters').textContent = results.totalVoters;
-            const list = document.getElementById('results-list'); list.innerHTML = '';
-            results.sorted.forEach(item => { const isWinner = results.winners.some(w => w.name === item.name); const div = document.createElement('div'); div.className = 'result-item' + (isWinner ? ' winner' : ''); div.innerHTML = `<div style="flex: 1;"><div class="flex-between"><span style="font-weight: ${isWinner ? '700' : '400'};">${escapeHtml(item.name)}</span><span>${item.count} voix (${item.percentage.toFixed(1)}%)</span></div><div class="result-bar"><div class="result-bar-fill" style="width: ${item.percentage}%; ${isWinner ? 'background: var(--success);' : ''}"></div></div></div>${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Élu</span>' : ''}`; list.appendChild(div); });
-            
-            // === EMBED HÉMICYCLE ===
-            embedHemicycle(results);
-        }
-        
-        function embedHemicycle(results) {
-            // Construire le JSON récapitulatif du vote
-            const voteData = buildHemicycleData(results);
-            
-            // Encoder en base64 pour l'URL
-            const jsonStr = JSON.stringify(voteData);
-            const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
-            const url = `https://vote.honore-romane.fr/scrutins/hemicycle.html?data=${encodeURIComponent(encoded)}`;
-            
-            const frame = document.getElementById('hemicycle-frame');
-            frame.src = url;
-        }
         
         function buildHemicycleData(results) {
             const p = results.counts['Pour'] || 0;
             const c = results.counts['Contre'] || 0;
             const a = results.counts['Abstention'] || 0;
-            const totalVotes = p + c + a;
-            
-            // Générer la liste des sièges dans l'ordre des votes reçus
             const sieges = [];
             let seatIndex = 1;
-            
-            // Parcourir les votes dans l'ordre chronologique de réception
             currentVote.votes.forEach(vote => {
                 if (currentVote.mode === 'simple') {
                     const idx = vote.answers[0];
                     if (idx !== undefined && currentVote.options[idx]) {
-                        const voteType = currentVote.options[idx].toLowerCase(); // "pour", "contre", "abstention"
+                        const voteType = currentVote.options[idx].toLowerCase();
                         if (voteType === 'pour' || voteType === 'contre' || voteType === 'abstention') {
                             sieges.push({
                                 nom: `Siege ${seatIndex}`,
@@ -448,12 +449,7 @@
                         }
                     }
                 }
-                // Pour le mode multiple, on ne gère pas l'hémicycle (pas de pour/contre/abstention)
             });
-            
-            // Si des sièges manquent (car votes non comptabilisés), compléter avec des absents
-            // On ne complète pas car l'hémicycle affichera des sièges vides (vacants) pour le reste
-            
             return {
                 numero: displayCode,
                 date: new Date().toISOString().slice(0, 10),
@@ -461,16 +457,118 @@
                 pour: p,
                 contre: c,
                 abstention: a,
-                sieges: sieges
+                sieges
             };
         }
         
-        function newVote() { document.getElementById('results-section').classList.add('hidden'); document.getElementById('vote-section').classList.add('hidden'); document.getElementById('create-section').classList.remove('hidden'); document.getElementById('question-input').value = ''; document.getElementById('options-list').innerHTML = ''; document.getElementById('max-choices').value = '1'; document.getElementById('vote-mode').value = 'simple'; toggleVoteMode(); currentVote = null; hasVoted.clear(); broadcast({ type: 'reset' }); broadcast({ type: 'draft_cancelled' }); }
-        function renderHistory() { const list = document.getElementById('history-list'); list.innerHTML = ''; if (history.length === 0) { list.innerHTML = '<p style="text-align: center; color: var(--text-light); padding: 1rem;">Aucun vote dans l\'historique.</p>'; return; } history.forEach((entry) => { const div = document.createElement('div'); div.className = 'history-item'; div.innerHTML = `<div class="flex-between"><strong>${escapeHtml(entry.question)}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">${entry.results.totalExpressed} suffrages exprimés - ${entry.results.totalVoters} votants</div>`; div.onclick = () => toggleHistoryDetail(div, entry); list.appendChild(div); }); }
-        function toggleHistoryDetail(element, entry) { const existing = element.querySelector('.history-detail'); if (existing) { existing.remove(); return; } const detail = document.createElement('div'); detail.className = 'history-detail'; let html = `<p><strong>Question :</strong> ${escapeHtml(entry.question)}</p>`; html += `<p><strong>Mode :</strong> ${entry.mode === 'simple' ? 'Simple' : 'Choix multiples (' + entry.maxChoices + ' max)'}</p>`; html += `<p><strong>Suffrages exprimés :</strong> ${entry.results.totalExpressed}</p>`; html += `<p><strong>Majorité absolue :</strong> ${entry.results.absoluteMajority}</p>`; html += `<p><strong>Votants :</strong> ${entry.results.totalVoters}</p>`; html += `<p><strong>Résultats :</strong></p><ul style="margin-left: 1rem; margin-top: 0.25rem;">`; entry.results.sorted.forEach(item => { const isWinner = entry.results.winners.some(w => w.name === item.name); html += `<li>${escapeHtml(item.name)} : ${item.count} voix (${item.percentage.toFixed(1)}%) ${isWinner ? '✓ Élu' : ''}</li>`; }); html += '</ul>'; detail.innerHTML = html; element.appendChild(detail); }
+        function buildHemicycleUrl(hemicycleData) {
+            const jsonStr = JSON.stringify(hemicycleData);
+            const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+            return `${HEMICYCLE_BASE}?data=${encodeURIComponent(encoded)}`;
+        }
         
-        function closeSessionAndExport() { if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return; sessionClosed = true; if (history.length > 0) exportPDF(); broadcast({ type: 'close' }); try { localStorage.removeItem('vote_history_' + sessionId); } catch(e) {} history = []; connections.forEach(conn => { if (conn.open) conn.close(); }); connections = []; voters.clear(); if (peer) { try { peer.destroy(); } catch(e) {} } document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.add('hidden'); document.getElementById('closed-section').classList.remove('hidden'); }
-        function exportPDF() { const { jsPDF } = window.jspdf; const doc = new jsPDF(); doc.setFontSize(18); doc.text('Historique des votes', 14, 20); doc.setFontSize(10); doc.text(`Session du ${sessionStartTime.toLocaleString()}`, 14, 28); doc.text(`Code de session : ${displayCode}`, 14, 34); let y = 52; history.forEach((entry, index) => { if (y > 250) { doc.addPage(); y = 20; } doc.setFontSize(12); doc.setFont(undefined, 'bold'); const q = doc.splitTextToSize(`Vote ${index + 1} : ${entry.question}`, 180); doc.text(q, 14, y); y += q.length * 6 + 2; doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.text(`Mode : ${entry.mode === 'simple' ? 'Simple' : 'Choix multiples (' + entry.maxChoices + ' max)'}`, 14, y); y += 5; doc.text(`Suffrages exprimés : ${entry.results.totalExpressed} | Majorité absolue : ${entry.results.absoluteMajority} | Votants : ${entry.results.totalVoters}`, 14, y); y += 7; entry.results.sorted.forEach(item => { const isWinner = entry.results.winners.some(w => w.name === item.name); const line = `  - ${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%)${isWinner ? ' [ÉLU]' : ''}`; doc.text(line, 14, y); y += 5; }); y += 5; }); doc.save(`historique_votes_${displayCode}_${sessionStartTime.toISOString().slice(0,10)}.pdf`); }
+        function displayResults(hemicycleData) {
+            document.getElementById('vote-section').classList.add('hidden');
+            document.getElementById('results-section').classList.remove('hidden');
+            document.getElementById('result-question').textContent = currentVote.question;
+            const frame = document.getElementById('hemicycle-frame');
+            document.getElementById('hemicycle-wrap').classList.remove('history-mode');
+            frame.src = buildHemicycleUrl(hemicycleData);
+        }
+        
+        function newVote() {
+            document.getElementById('results-section').classList.add('hidden');
+            document.getElementById('vote-section').classList.add('hidden');
+            document.getElementById('create-section').classList.remove('hidden');
+            document.getElementById('question-input').value = '';
+            document.getElementById('options-list').innerHTML = '';
+            document.getElementById('max-choices').value = '1';
+            document.getElementById('vote-mode').value = 'simple';
+            toggleVoteMode();
+            currentVote = null; hasVoted.clear();
+            broadcast({ type: 'reset' }); broadcast({ type: 'draft_cancelled' });
+        }
+        
+        function renderHistory() {
+            const list = document.getElementById('history-list'); list.innerHTML = '';
+            if (history.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: var(--text-light); padding: 1rem;">Aucun vote dans l\'historique.</p>';
+                return;
+            }
+            history.forEach((entry) => {
+                const div = document.createElement('div');
+                div.className = 'history-item';
+                const hd = entry.hemicycleData || {};
+                div.innerHTML = `<div class="flex-between"><strong>${escapeHtml(hd.titre || entry.question || 'Vote')}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">Pour : ${hd.pour || 0} · Contre : ${hd.contre || 0} · Abstention : ${hd.abstention || 0}</div>`;
+                div.onclick = () => toggleHistoryDetail(div, entry);
+                list.appendChild(div);
+            });
+        }
+        
+        function toggleHistoryDetail(element, entry) {
+            const existing = element.querySelector('.history-detail');
+            if (existing) { existing.remove(); return; }
+            const hd = entry.hemicycleData;
+            if (!hd) { showToast('Données indisponibles pour ce vote.'); return; }
+            const detail = document.createElement('div');
+            detail.className = 'history-detail';
+            detail.innerHTML = `
+                <div class="hemicycle-wrap history-mode">
+                    <iframe class="hemicycle-frame" src="${buildHemicycleUrl(hd)}" frameborder="0"></iframe>
+                </div>
+            `;
+            element.appendChild(detail);
+        }
+        
+        function closeSessionAndExport() {
+            if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return;
+            sessionClosed = true;
+            if (history.length > 0) exportPDF();
+            broadcast({ type: 'close' });
+            try { localStorage.removeItem('vote_history_' + sessionId); } catch(e) {}
+            history = [];
+            connections.forEach(conn => { if (conn.open) conn.close(); });
+            connections = []; voters.clear();
+            if (peer) { try { peer.destroy(); } catch(e) {} }
+            document.getElementById('home-section').classList.add('hidden');
+            document.getElementById('admin-section').classList.add('hidden');
+            document.getElementById('closed-section').classList.remove('hidden');
+        }
+        
+        function exportPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFontSize(18);
+            doc.text('Historique des votes', 14, 20);
+            doc.setFontSize(10);
+            doc.text(`Session du ${sessionStartTime.toLocaleString()}`, 14, 28);
+            doc.text(`Code de session : ${displayCode}`, 14, 34);
+            let y = 52;
+            history.forEach((entry, index) => {
+                if (y > 250) { doc.addPage(); y = 20; }
+                const hd = entry.hemicycleData || {};
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'bold');
+                const q = doc.splitTextToSize(`Vote ${index + 1} : ${hd.titre || entry.question}`, 180);
+                doc.text(q, 14, y); y += q.length * 6 + 2;
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'normal');
+                const exprimes = (hd.pour || 0) + (hd.contre || 0);
+                const majorite = Math.floor(exprimes / 2) + 1;
+                doc.text(`Suffrages exprimés : ${exprimes} | Majorité absolue : ${majorite} | Votants : ${(hd.pour||0)+(hd.contre||0)+(hd.abstention||0)}`, 14, y);
+                y += 7;
+                doc.text(`  - Pour : ${hd.pour || 0}`, 14, y); y += 5;
+                doc.text(`  - Contre : ${hd.contre || 0}`, 14, y); y += 5;
+                doc.text(`  - Abstention : ${hd.abstention || 0}`, 14, y); y += 5;
+                const resultat = (hd.pour || 0) > majorite ? "ADOPTÉ" : "REJETÉ";
+                doc.setFont(undefined, 'bold');
+                doc.text(`  Résultat : ${resultat}`, 14, y); y += 5;
+                doc.setFont(undefined, 'normal');
+                y += 5;
+            });
+            doc.save(`historique_votes_${displayCode}_${sessionStartTime.toISOString().slice(0,10)}.pdf`);
+        }
+        
         function copyLink() { const input = document.getElementById('session-link'); input.select(); document.execCommand('copy'); showToast('Lien copié !'); }
         function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
         function showToast(message) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
