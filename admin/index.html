@@ -104,11 +104,27 @@
         .numero-input-wrap input { margin-bottom: 0; }
         .numero-input-wrap label { font-size: 0.85rem; color: var(--text-light); display: block; margin-bottom: 0.25rem; }
         .siege-info { font-size: 0.8rem; color: var(--text-light); padding: 0.5rem; background: var(--bg); border-radius: 8px; margin-bottom: 0.75rem; }
+
+        /* Écran d'authentification */
+        .auth-screen { text-align: center; }
+        .auth-spinner {
+            width: 2.25rem; height: 2.25rem; margin: 0 auto 1rem;
+            border: 3px solid var(--border); border-top-color: var(--primary);
+            border-radius: 50%; animation: authSpin 0.9s linear infinite;
+        }
+        @keyframes authSpin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="home-section" class="card">
+        <!-- ÉCRAN D'AUTHENTIFICATION (nouveau) -->
+        <div id="auth-screen" class="card auth-screen">
+            <div class="auth-spinner"></div>
+            <h1>Vérification…</h1>
+            <p>Vérification de vos droits d'accès en cours.</p>
+        </div>
+
+        <div id="home-section" class="card hidden">
             <h1>Session de vote</h1>
             <p style="text-align: center; margin-bottom: 1rem;">Scannez ce QR Code ou entrez le code pour rejoindre.</p>
 
@@ -213,7 +229,39 @@
     </div>
     <div id="toast" class="toast"></div>
 
-    <script>
+    <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+    import {
+        getAuth,
+        onAuthStateChanged,
+        signOut
+    } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+    import {
+        getFirestore,
+        doc,
+        getDoc
+    } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyBulM5-30n3SoH7zT7nxDBvB42Pu4c3qSs",
+        authDomain: "mdl-et-cvl-2027.firebaseapp.com",
+        projectId: "mdl-et-cvl-2027",
+        storageBucket: "mdl-et-cvl-2027.firebasestorage.app",
+        messagingSenderId: "142816093888",
+        appId: "1:142816093888:web:9f7c3632732a526b7c2f25",
+        measurementId: "G-FBKEPBY0CQ"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const LOGIN_URL = 'https://account.honore-romane.fr/login/';
+    const HOME_URL = 'https://account.honore-romane.fr/account/';
+    // URL de cette page (pour le retour après connexion)
+    const SELF_URL = 'https://account.honore-romane.fr/admin/';
+
+    // ===== ÉTAT GLOBAL (inchangé) =====
     let peer = null, connections = [], sessionId = null, displayCode = null;
     let currentVote = null, voters = new Map(), hasVoted = new Set(), history = [];
     let sessionStartTime = new Date(), voteActive = false, waitingForVotes = false;
@@ -240,6 +288,82 @@
         border: [226, 232, 240],
         white: [255, 255, 255]
     };
+
+    // ===== AUTHENTIFICATION FIREBASE =====
+    function buildLoginUrl() {
+        const redirectUrl = new URL(SELF_URL);
+        const currentParams = new URLSearchParams(window.location.search);
+        currentParams.forEach((value, key) => redirectUrl.searchParams.set(key, value));
+        return LOGIN_URL + '?redirect=' + encodeURIComponent(redirectUrl.toString());
+    }
+
+    function goToLogin() { window.location.replace(buildLoginUrl()); }
+    function goHome() { window.location.replace(HOME_URL); }
+
+    // Vérifie l'utilisateur Firebase + le statut admin.
+    // Retourne true si OK, sinon déclenche la redirection et retourne false.
+    async function checkAdminAuth() {
+        return new Promise((resolve) => {
+            const unsub = onAuthStateChanged(auth, async (user) => {
+                unsub();
+
+                if (!user) {
+                    goToLogin();
+                    resolve(false);
+                    return;
+                }
+
+                try {
+                    const snap = await getDoc(doc(db, 'users', user.uid));
+                    if (!snap.exists()) {
+                        await signOut(auth).catch(() => {});
+                        goToLogin();
+                        resolve(false);
+                        return;
+                    }
+                    const data = snap.data();
+                    if (data.status !== 'active') {
+                        await signOut(auth).catch(() => {});
+                        goToLogin();
+                        resolve(false);
+                        return;
+                    }
+                    if (data.isAdmin !== true) {
+                        goHome();
+                        resolve(false);
+                        return;
+                    }
+                    resolve(true);
+                } catch (err) {
+                    console.error('Erreur vérification admin:', err);
+                    await signOut(auth).catch(() => {});
+                    goToLogin();
+                    resolve(false);
+                }
+            });
+        });
+    }
+
+    // ===== DÉMARRAGE =====
+    async function bootstrap() {
+        const ok = await checkAdminAuth();
+        if (!ok) return; // redirection en cours
+
+        // Affiche l'interface admin
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('home-section').classList.remove('hidden');
+
+        // Charge les données + initialise PeerJS
+        await startAdmin();
+    }
+
+    async function startAdmin() {
+        await loadSiegesIdentites();
+        init();
+        toggleVoteMode();
+        addOption();
+        addOption();
+    }
 
     // ===== Chargement des identités des sièges =====
     async function loadSiegesIdentites() {
@@ -281,10 +405,10 @@
         if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
         displayCode = generateShortCode();
         sessionId = APP_PREFIX + '-' + displayCode;
-        
+
         const server = PEER_CONFIG.servers[currentServerIndex];
         updateServerStatus(`Serveur : ${server.host} (essai ${currentServerIndex + 1}/${PEER_CONFIG.servers.length})`);
-        
+
         const peerOptions = {
             ...PEER_CONFIG.commonOptions,
             host: server.host,
@@ -294,7 +418,7 @@
             key: server.key,
             pingInterval: 5000
         };
-        
+
         try {
             peer = new Peer(sessionId, peerOptions);
         } catch (e) {
@@ -302,9 +426,9 @@
             switchToNextServer();
             return;
         }
-        
+
         let opened = false;
-        
+
         peer.on('open', (id) => {
             opened = true;
             reconnectAttempts = 0;
@@ -319,7 +443,7 @@
             document.getElementById('connection-status').textContent = 'Prêt';
             document.getElementById('connection-status').className = 'badge success';
         });
-        
+
         peer.on('connection', (conn) => {
             connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
             conn.on('data', (data) => handleUserData(conn, data));
@@ -330,7 +454,7 @@
             });
             conn.on('error', (err) => { console.warn('Erreur connexion:', err); });
         });
-        
+
         peer.on('error', (err) => {
             console.error('Erreur PeerJS:', err);
             if (err.type === 'unavailable-id') {
@@ -349,18 +473,18 @@
             }
             showToast('Erreur: ' + err.type);
         });
-        
+
         peer.on('disconnected', () => {
             console.warn('Peer déconnecté, tentative de reconnexion...');
             if (sessionClosed) return;
             attemptReconnect();
         });
-        
+
         peer.on('close', () => {
             if (sessionClosed) return;
             attemptReconnect();
         });
-        
+
         const savedHistory = localStorage.getItem('vote_history_' + sessionId);
         if (savedHistory) {
             try { history = JSON.parse(savedHistory); } catch(e) { history = []; }
@@ -399,7 +523,7 @@
         }
         return formatNumero(startNumero);
     }
-    
+
     function switchToNextServer() {
         currentServerIndex = (currentServerIndex + 1) % PEER_CONFIG.servers.length;
         console.warn('Bascule vers serveur:', PEER_CONFIG.servers[currentServerIndex].host);
@@ -407,7 +531,7 @@
         peer = null;
         setTimeout(() => init(), 800);
     }
-    
+
     function attemptReconnect() {
         if (sessionClosed) return;
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -435,7 +559,7 @@
             }, 500);
         }, Math.min(1000 * reconnectAttempts, 8000));
     }
-    
+
     function recreatePeerWithCurrentCode() {
         if (sessionClosed) return;
         const server = PEER_CONFIG.servers[currentServerIndex];
@@ -485,19 +609,19 @@
         peer.on('disconnected', () => { if (!sessionClosed) attemptReconnect(); });
         peer.on('close', () => { if (!sessionClosed) attemptReconnect(); });
     }
-    
+
     function updateServerStatus(text) {
         const el = document.getElementById('server-status');
         if (el) el.textContent = text;
     }
-    
+
     function generateShortCode() { const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'; let code = ''; for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length)); return code; }
     function openAdmin() { saveStartNumero(); document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.remove('hidden'); updateNextNumeroDisplay(); }
     function switchTab(tab) { document.getElementById('tab-create').classList.toggle('active', tab === 'create'); document.getElementById('tab-history').classList.toggle('active', tab === 'history'); document.getElementById('create-tab-content').classList.toggle('hidden', tab !== 'create'); document.getElementById('history-tab-content').classList.toggle('hidden', tab !== 'history'); if (tab === 'history') renderHistory(); }
-    
+
     function sendDraft() { if (draftTimeout) clearTimeout(draftTimeout); draftTimeout = setTimeout(() => { const draft = getCurrentDraft(); if (!draft) { broadcast({ type: 'draft_cancelled' }); return; } broadcast({ type: 'draft', draft }); }, 400); }
     function getCurrentDraft() { const question = document.getElementById('question-input').value.trim(); const mode = document.getElementById('vote-mode').value; const maxChoices = parseInt(document.getElementById('max-choices').value) || 1; let options = []; if (mode === 'multiple') document.querySelectorAll('.option-input').forEach(inp => { if (inp.value.trim()) options.push(inp.value.trim()); }); if (!question && options.length === 0) return null; return { question, mode, maxChoices, options }; }
-    
+
     function handleUserData(conn, data) {
         if (data.type === 'hello') {
             if (voteActive && currentVote) conn.send({ type: 'state', state: 'voting', vote: currentVote, hasVoted: hasVoted.has(conn.peer) });
@@ -517,7 +641,7 @@
     function updateConnectedCount() { document.getElementById('connected-count').textContent = voters.size; if (voteActive && waitingForVotes) document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
     function toggleVoteMode() { const mode = document.getElementById('vote-mode').value; document.getElementById('simple-options').classList.toggle('hidden', mode !== 'simple'); document.getElementById('multiple-options').classList.toggle('hidden', mode !== 'multiple'); }
     function addOption() { const list = document.getElementById('options-list'); const div = document.createElement('div'); div.className = 'vote-option'; div.innerHTML = `<input type="text" placeholder="Nom de l'option" class="option-input" oninput="sendDraft()"><button onclick="this.parentElement.remove(); sendDraft();">×</button>`; list.appendChild(div); }
-    
+
     function startVote() {
         const question = document.getElementById('question-input').value.trim(); if (!question) { showToast('Veuillez entrer une question.'); return; }
         const mode = document.getElementById('vote-mode').value; let options = []; let maxChoices = 1;
@@ -536,7 +660,7 @@
     function updateVoteProgress() { document.getElementById('votes-received').textContent = hasVoted.size; document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
     function skipWaiting() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
     function showResults() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
-    
+
     function calculateResults() {
         const options = currentVote.options;
         const mode = currentVote.mode;
@@ -568,7 +692,7 @@
         }
         return { counts, sorted, totalExpressed, totalVoters, absoluteMajority, winners, mode, options };
     }
-    
+
     function buildHemicycleData() {
         const counts = { pour: 0, contre: 0, abstention: 0 };
         const sieges = [];
@@ -617,7 +741,7 @@
             sieges
         };
     }
-    
+
     function finishVote() {
         if (!voteActive) return;
         voteActive = false; waitingForVotes = false;
@@ -659,14 +783,12 @@
                 } catch (e) {
                     console.warn('postMessage échoué:', e);
                 }
-                // Laisser le temps au rendu (fetch SVG + seatPaths)
                 setTimeout(() => resolve(true), 1800);
             };
             window.addEventListener('message', onMessage);
 
             iframe.src = HEMICYCLE_BASE;
 
-            // Timeout de sécurité
             setTimeout(() => {
                 if (!ready) {
                     window.removeEventListener('message', onMessage);
@@ -713,7 +835,7 @@
             list.appendChild(div);
         });
     }
-    
+
     function newVote() {
         document.getElementById('results-section').classList.add('hidden');
         document.getElementById('vote-section').classList.add('hidden');
@@ -727,7 +849,7 @@
         broadcast({ type: 'reset' }); broadcast({ type: 'draft_cancelled' });
         updateNextNumeroDisplay();
     }
-    
+
     function renderHistory() {
         const list = document.getElementById('history-list'); list.innerHTML = '';
         if (history.length === 0) {
@@ -753,7 +875,7 @@
             list.appendChild(div);
         });
     }
-    
+
     async function toggleHistoryDetail(element, entry) {
         const existing = element.querySelector('.history-detail');
         if (existing) { existing.remove(); return; }
@@ -784,7 +906,7 @@
             element.appendChild(detail);
         }
     }
-    
+
     function closeSessionAndExport() {
         if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return;
         sessionClosed = true;
@@ -1168,19 +1290,29 @@
             iframe.src = HEMICYCLE_BASE;
         });
     }
-    
+
     function copyLink() { const input = document.getElementById('session-link'); input.select(); document.execCommand('copy'); showToast('Lien copié !'); }
     function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
     function showToast(message) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
-    
-    window.onload = async () => {
-        await loadSiegesIdentites();
-        init();
-        toggleVoteMode();
-        addOption();
-        addOption();
-    };
+
+    // ===== Exposition des fonctions inline =====
+    window.saveStartNumero = saveStartNumero;
+    window.copyLink = copyLink;
+    window.openAdmin = openAdmin;
+    window.switchTab = switchTab;
+    window.sendDraft = sendDraft;
+    window.toggleVoteMode = toggleVoteMode;
+    window.addOption = addOption;
+    window.startVote = startVote;
+    window.skipWaiting = skipWaiting;
+    window.showResults = showResults;
+    window.newVote = newVote;
+    window.closeSessionAndExport = closeSessionAndExport;
+
+    // ===== Démarrage =====
+    bootstrap();
+
     window.onbeforeunload = () => { if (peer) try { peer.destroy(); } catch(e) {} };
-</script>
+    </script>
 </body>
 </html>
