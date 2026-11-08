@@ -103,6 +103,7 @@
         .numero-input-wrap { display: flex; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.75rem; }
         .numero-input-wrap input { margin-bottom: 0; }
         .numero-input-wrap label { font-size: 0.85rem; color: var(--text-light); display: block; margin-bottom: 0.25rem; }
+        .siege-info { font-size: 0.8rem; color: var(--text-light); padding: 0.5rem; background: var(--bg); border-radius: 8px; margin-bottom: 0.75rem; }
     </style>
 </head>
 <body>
@@ -120,6 +121,8 @@
             <p style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 1rem;">
                 Ex. : si le dernier scrutin public était le n°357, saisissez <strong>358</strong> — les votes seront numérotés 0358, 0359, 0360…
             </p>
+
+            <div class="siege-info" id="siege-info">Chargement des identités des sièges…</div>
 
             <div class="qr-hero"><div id="qrcode"></div></div>
             <div class="session-code-display">
@@ -217,9 +220,15 @@
         let draftTimeout = null, sessionClosed = false;
         let currentServerIndex = 0, reconnectTimer = null, reconnectAttempts = 0;
         let startNumero = 1;
+        // Fichier annexe des identités des sièges
+        let siegesIdentites = [];        // liste complète chargée depuis sieges.json
+        let siegesMap = new Map();       // numero -> identité
+        let assignedSeats = new Map();   // connId -> numero de siège
+        let usedSeats = new Set();       // numéros déjà attribués à des connexions
         const MAX_RECONNECT_ATTEMPTS = 30;
 
         const HEMICYCLE_BASE = "https://vote.honore-romane.fr/scrutins/hemicycle.html";
+        const SIEGES_URL = "sieges.json";
 
         const PDF_COLORS = {
             an: [27, 85, 138],
@@ -235,6 +244,48 @@
             white: [255, 255, 255]
         };
 
+        // ===== Chargement des identités des sièges =====
+        async function loadSiegesIdentites() {
+            try {
+                const res = await fetch(SIEGES_URL, { cache: 'no-cache' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                if (!Array.isArray(data)) throw new Error('Format invalide (attendu: tableau)');
+                siegesIdentites = data
+                    .map(s => ({
+                        numero: parseInt(s.numero),
+                        nom: s.nom || '',
+                        prenom: s.prenom || '',
+                        sex: (s.sex || s.genre || 'M').toUpperCase() === 'F' ? 'F' : 'M',
+                        circonscription: s.circonscription || s.circo || '',
+                        groupe: s.groupe || ''
+                    }))
+                    .filter(s => !isNaN(s.numero))
+                    .sort((a, b) => a.numero - b.numero);
+                siegesMap = new Map(siegesIdentites.map(s => [s.numero, s]));
+                const info = document.getElementById('siege-info');
+                if (info) {
+                    info.textContent = `${siegesIdentites.length} siège(s) chargé(s) depuis ${SIEGES_URL}`;
+                }
+                return true;
+            } catch (e) {
+                console.error('Erreur chargement sieges.json:', e);
+                const info = document.getElementById('siege-info');
+                if (info) {
+                    info.innerHTML = `<strong style="color:var(--danger)">Erreur :</strong> impossible de charger <code>${SIEGES_URL}</code>. Vérifiez que le fichier existe et est accessible.`;
+                }
+                return false;
+            }
+        }
+
+        function findFreeSeat() {
+            for (const s of siegesIdentites) {
+                if (!usedSeats.has(s.numero)) return s.numero;
+            }
+            return null;
+        }
+
+        // ===== Initialisation PeerJS =====
         function init() {
             if (sessionClosed) return;
             if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
@@ -281,8 +332,29 @@
             
             peer.on('connection', (conn) => {
                 connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
+                // Attribuer un siège à la connexion
+                const freeSeat = findFreeSeat();
+                if (freeSeat !== null) {
+                    assignedSeats.set(conn.peer, freeSeat);
+                    usedSeats.add(freeSeat);
+                    const id = siegesMap.get(freeSeat);
+                    conn.send({ type: 'seat_assigned', siege: freeSeat, identite: id });
+                    console.log(`Siège ${freeSeat} attribué à ${conn.peer}`);
+                } else {
+                    conn.send({ type: 'seat_unavailable' });
+                    console.warn('Aucun siège libre pour', conn.peer);
+                }
                 conn.on('data', (data) => handleUserData(conn, data));
-                conn.on('close', () => { voters.delete(conn.peer); connections = connections.filter(c => c.peer !== conn.peer); updateConnectedCount(); });
+                conn.on('close', () => {
+                    voters.delete(conn.peer);
+                    connections = connections.filter(c => c.peer !== conn.peer);
+                    const seat = assignedSeats.get(conn.peer);
+                    if (seat !== undefined) {
+                        usedSeats.delete(seat);
+                        assignedSeats.delete(conn.peer);
+                    }
+                    updateConnectedCount();
+                });
                 conn.on('error', (err) => { console.warn('Erreur connexion:', err); });
             });
             
@@ -423,8 +495,26 @@
             });
             peer.on('connection', (conn) => {
                 connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
+                const freeSeat = findFreeSeat();
+                if (freeSeat !== null) {
+                    assignedSeats.set(conn.peer, freeSeat);
+                    usedSeats.add(freeSeat);
+                    const id = siegesMap.get(freeSeat);
+                    conn.send({ type: 'seat_assigned', siege: freeSeat, identite: id });
+                } else {
+                    conn.send({ type: 'seat_unavailable' });
+                }
                 conn.on('data', (data) => handleUserData(conn, data));
-                conn.on('close', () => { voters.delete(conn.peer); connections = connections.filter(c => c.peer !== conn.peer); updateConnectedCount(); });
+                conn.on('close', () => {
+                    voters.delete(conn.peer);
+                    connections = connections.filter(c => c.peer !== conn.peer);
+                    const seat = assignedSeats.get(conn.peer);
+                    if (seat !== undefined) {
+                        usedSeats.delete(seat);
+                        assignedSeats.delete(conn.peer);
+                    }
+                    updateConnectedCount();
+                });
             });
             peer.on('error', (err) => {
                 console.error('Erreur PeerJS (reconnexion):', err);
@@ -453,15 +543,19 @@
         
         function handleUserData(conn, data) {
             if (data.type === 'hello') {
-                if (voteActive && currentVote) conn.send({ type: 'state', state: 'voting', vote: currentVote, hasVoted: hasVoted.has(conn.peer) });
+                const seat = assignedSeats.get(conn.peer);
+                if (voteActive && currentVote) conn.send({ type: 'state', state: 'voting', vote: currentVote, hasVoted: hasVoted.has(conn.peer), siege: seat });
                 else if (!voteActive && currentVote) conn.send({ type: 'state', state: 'results' });
-                else { conn.send({ type: 'state', state: 'waiting' }); const draft = getCurrentDraft(); if (draft) conn.send({ type: 'draft', draft }); }
+                else { conn.send({ type: 'state', state: 'waiting', siege: seat }); const draft = getCurrentDraft(); if (draft) conn.send({ type: 'draft', draft }); }
                 return;
             }
             if (data.type === 'vote') {
                 if (!voteActive || hasVoted.has(conn.peer)) return;
                 hasVoted.add(conn.peer);
-                currentVote.votes.push({ connId: conn.peer, answers: data.answers });
+                // Le numéro de siège est celui attribué à la connexion (prioritaire),
+                // sinon celui envoyé par le client
+                const seatNum = assignedSeats.has(conn.peer) ? assignedSeats.get(conn.peer) : data.siege;
+                currentVote.votes.push({ connId: conn.peer, siege: seatNum, answers: data.answers });
                 updateVoteProgress();
                 if (hasVoted.size >= voters.size && voters.size > 0) finishVote();
             }
@@ -515,52 +609,58 @@
             } else {
                 const pour = counts['Pour'] || 0;
                 const contre = counts['Contre'] || 0;
-                // Résultat simple : pour > contre → Adopté, sinon Rejeté
                 if (pour > contre) winners = [{ name: 'Pour', count: pour, percentage: 0 }];
                 else winners = [{ name: 'Contre', count: contre, percentage: 0 }];
             }
             return { counts, sorted, totalExpressed, totalVoters, absoluteMajority, winners, mode, options };
         }
         
+        /**
+         * Construit le JSON pour hemicycle.html à partir du fichier annexe sieges.json.
+         * - Parcourt TOUS les sièges du fichier
+         * - Si le siège a voté : son vote (pour/contre/abstention)
+         * - Sinon : "absent"
+         * - Le numéro du siège, nom, prénom, sexe, circonscription, groupe viennent du fichier
+         */
         function buildHemicycleData() {
             const counts = { pour: 0, contre: 0, abstention: 0 };
             const sieges = [];
-            let seatIndex = 1;
 
-            currentVote.votes.forEach(vote => {
-                const idx = vote.answers[0];
+            // Index des votes par numéro de siège
+            const votesBySeat = new Map();
+            currentVote.votes.forEach(v => {
+                if (v.siege !== undefined && v.siege !== null) {
+                    votesBySeat.set(parseInt(v.siege), v);
+                }
+            });
+
+            // Parcours de tous les sièges du fichier annexe
+            siegesIdentites.forEach(identite => {
+                const vote = votesBySeat.get(identite.numero);
                 let voteType = 'absent';
-                if (idx !== undefined && currentVote.options[idx]) {
-                    const opt = currentVote.options[idx];
-                    if (opt === 'Pour') voteType = 'pour';
-                    else if (opt === 'Contre') voteType = 'contre';
-                    else if (opt === 'Abstention') voteType = 'abstention';
+                if (vote) {
+                    const idx = vote.answers[0];
+                    if (idx !== undefined && currentVote.options[idx]) {
+                        const opt = currentVote.options[idx];
+                        if (opt === 'Pour') voteType = 'pour';
+                        else if (opt === 'Contre') voteType = 'contre';
+                        else if (opt === 'Abstention') voteType = 'abstention';
+                    }
                 }
                 if (voteType === 'pour') counts.pour++;
                 else if (voteType === 'contre') counts.contre++;
                 else if (voteType === 'abstention') counts.abstention++;
 
                 sieges.push({
-                    nom: `Siege ${seatIndex}`,
-                    genre: Math.random() < 0.5 ? 'M' : 'F',
-                    circo: 'circonscription',
-                    groupe: 'groupe politique',
-                    vote: voteType
+                    nom: identite.nom,
+                    prenom: identite.prenom,
+                    genre: identite.sex,
+                    circo: identite.circonscription,
+                    groupe: identite.groupe,
+                    vote: voteType,
+                    numero: identite.numero
                 });
-                seatIndex++;
             });
-
-            const expected = currentVote.expectedVoters || voters.size;
-            while (sieges.length < expected) {
-                sieges.push({
-                    nom: `Siege ${seatIndex}`,
-                    genre: Math.random() < 0.5 ? 'M' : 'F',
-                    circo: 'circonscription',
-                    groupe: 'groupe politique',
-                    vote: 'absent'
-                });
-                seatIndex++;
-            }
 
             return {
                 numero: currentVote.numero,
@@ -715,6 +815,7 @@
             history = [];
             connections.forEach(conn => { if (conn.open) conn.close(); });
             connections = []; voters.clear();
+            usedSeats.clear(); assignedSeats.clear();
             if (peer) { try { peer.destroy(); } catch(e) {} }
             document.getElementById('home-section').classList.add('hidden');
             document.getElementById('admin-section').classList.add('hidden');
@@ -722,7 +823,7 @@
         }
 
         // =====================================================================
-        // ============ HELPERS PDF (style Assemblée nationale) ================
+        // ============ HELPERS PDF ============================================
         // =====================================================================
         function pdfSetFill(doc, color) { doc.setFillColor(color[0], color[1], color[2]); }
         function pdfSetText(doc, color) { doc.setTextColor(color[0], color[1], color[2]); }
@@ -788,7 +889,6 @@
             const pageH = doc.internal.pageSize.getHeight();
             let pageNum = 1;
 
-            // ========== PAGE 1 : SOMMAIRE ==========
             pdfHeader(doc, pageW);
 
             doc.setFontSize(24);
@@ -800,7 +900,6 @@
             doc.setLineWidth(0.6);
             doc.line(pageW / 2 - 30, 36, pageW / 2 + 30, 36);
 
-            // Bloc infos générales (sans les lignes "Numéros" et "Premier scrutin")
             const infoY = 46;
             pdfSetFill(doc, PDF_COLORS.anLight);
             doc.roundedRect(14, infoY, pageW - 28, 34, 3, 3, 'F');
@@ -817,7 +916,6 @@
             doc.text(`Date de la session : ${sessionStartTime.toLocaleString()}`, 20, infoY + 23);
             doc.text(`Nombre de scrutins : ${history.length}`, 20, infoY + 30);
 
-            // Sommaire
             let y = infoY + 46;
             doc.setFontSize(14);
             doc.setFont(undefined, 'bold');
@@ -829,7 +927,6 @@
             doc.line(14, y, pageW - 14, y);
             y += 7;
 
-            // En-têtes tableau
             pdfSetFill(doc, PDF_COLORS.an);
             doc.rect(14, y - 5, pageW - 28, 7, 'F');
             pdfSetText(doc, PDF_COLORS.white);
@@ -885,7 +982,6 @@
                 let badgeText = '', badgeBg = PDF_COLORS.textLight, badgeFg = PDF_COLORS.white;
                 if (entry.mode === 'simple' && entry.hemicycleData) {
                     const hd = entry.hemicycleData;
-                    // Résultat : pour > contre → Adopté
                     if (hd.pour > hd.contre) { badgeText = 'ADOPTÉ'; badgeBg = PDF_COLORS.success; }
                     else { badgeText = 'REJETÉ'; badgeBg = PDF_COLORS.danger; }
                 } else if (entry.results) {
@@ -901,7 +997,6 @@
             pdfFooter(doc, pageW, pageH, pageNum);
             pageNum++;
 
-            // ========== DÉTAIL PAR VOTE ==========
             for (let i = 0; i < history.length; i++) {
                 const entry = history[i];
                 const numero = entry.numero || getVoteNumero(entry);
@@ -909,10 +1004,8 @@
                 doc.addPage();
 
                 if (entry.mode === 'simple' && entry.hemicycleData) {
-                    // ----- OUI/NON : pas d'en-tête répétitif, directement la capture -----
                     const captured = await captureHemicyclePage(entry.hemicycleData);
                     if (captured) {
-                        // Capture plein page (sans header/footer pour ne pas répéter)
                         const imgW = pageW - 16;
                         const availableH = pageH - 16;
                         const ratio = Math.min(imgW / captured.width, availableH / captured.height);
@@ -922,7 +1015,6 @@
                         const yImg = (pageH - h) / 2;
                         doc.addImage(captured.dataUrl, 'JPEG', x, yImg, w, h);
                     } else {
-                        // Fallback texte minimal
                         const hd = entry.hemicycleData;
                         doc.setFontSize(14);
                         doc.setFont(undefined, 'bold');
@@ -940,8 +1032,9 @@
                         doc.setFont(undefined, 'bold');
                         doc.text(`Résultat : ${hd.pour > hd.contre ? 'ADOPTÉ' : 'REJETÉ'}`, 20, yy);
                     }
+                    pdfFooter(doc, pageW, pageH, pageNum);
+                    pageNum++;
                 } else if (entry.results) {
-                    // ----- ÉLECTION : page détaillée (avec en-tête) -----
                     pdfHeader(doc, pageW);
                     const r = entry.results;
 
@@ -1013,12 +1106,6 @@
                         y2 += 10;
                     });
 
-                    pdfFooter(doc, pageW, pageH, pageNum);
-                    pageNum++;
-                }
-
-                // Pour les oui/non, on ajoute le footer (numéro de page)
-                if (entry.mode === 'simple' && entry.hemicycleData) {
                     pdfFooter(doc, pageW, pageH, pageNum);
                     pageNum++;
                 }
@@ -1096,7 +1183,14 @@
         function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
         function showToast(message) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
         
-        window.onload = () => { init(); toggleVoteMode(); addOption(); addOption(); };
+        // === Démarrage ===
+        window.onload = async () => {
+            await loadSiegesIdentites();
+            init();
+            toggleVoteMode();
+            addOption();
+            addOption();
+        };
         window.onbeforeunload = () => { if (peer) try { peer.destroy(); } catch(e) {} };
     </script>
 </body>

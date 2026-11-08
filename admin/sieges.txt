@@ -1,0 +1,4 @@
+[
+  { "numero": 1, "nom": "Dupont", "prenom": "Jean", "sex": "M", "circonscription": "Paris 1re", "groupe": "Ensemble pour la République" },
+  ...
+]
