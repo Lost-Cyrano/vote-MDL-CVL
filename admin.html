@@ -99,8 +99,6 @@
         }
         #results-section { padding-bottom: 0; }
         #results-section .results-header { padding-bottom: 1rem; }
-
-        /* Ancien système (élections) */
         #election-results { padding-bottom: 1.5rem; }
     </style>
 </head>
@@ -166,11 +164,9 @@
                         <h2>Résultats</h2>
                         <p id="result-question" style="font-weight: 600;"></p>
                     </div>
-                    <!-- Oui/Non : hémicycle -->
                     <div class="hemicycle-wrap" id="hemicycle-wrap">
                         <iframe id="hemicycle-frame" class="hemicycle-frame" src="" frameborder="0"></iframe>
                     </div>
-                    <!-- Élection : ancien système -->
                     <div id="election-results" class="hidden">
                         <div class="grid-3" style="margin-bottom: 1rem;">
                             <div class="stat"><div class="stat-value" id="total-votes">0</div><div class="stat-label">Suffrages exprimés</div></div>
@@ -200,350 +196,658 @@
     <div id="toast" class="toast"></div>
 
     <script>
-  const SEAT_PATHS_URL = "https://vote.honore-romane.fr/scrutins/seatPaths.json";
-  const BACK_URL = "https://vote.honore-romane.fr/scrutins/back.html";
-  const COLORS = { pour: "#206BA7", contre: "#E34051", abstention: "#9FA8AD", absent: "#FFFFFF" };
-  
-  // Liste des sièges par rang (du centre vers l'extérieur)
-  const SIEGES_PAR_RANG = [18, 24, 30, 32, 40, 48, 54, 54, 68, 70, 82, 80];
+        let peer = null, connections = [], sessionId = null, displayCode = null;
+        let currentVote = null, voters = new Map(), hasVoted = new Set(), history = [];
+        let sessionStartTime = new Date(), voteActive = false, waitingForVotes = false;
+        let draftTimeout = null, sessionClosed = false;
+        let currentServerIndex = 0, reconnectTimer = null, reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 30;
 
-  const GROUPES_COULEURS = {
-    "Rassemblement National": "#313567", "Ensemble pour la République": "#7B4591",
-    "La France insoumise - Nouveau Front Populaire": "#C00D0D", "Socialistes et apparentés": "#F5B4CE",
-    "Droite Républicaine": "#8CB0DC", "Écologiste et Social": "#77AA79", "Les Démocrates": "#F07E26",
-    "Horizons & Indépendants": "#B5E2F9", "Libertés, Indépendants, Outre-mer et Territoires": "#FFD96F",
-    "Gauche Démocrate et Républicaine": "#830E21", "Union des droites pour la République": "#3367A7",
-    "Députés non inscrits": "#8D949A"
-  };
+        const HEMICYCLE_BASE = "https://vote.honore-romane.fr/scrutins/hemicycle.html";
 
-  let currentData = null;
-  let currentSelected = null;
-  let allSeats = [];
-  let seatRowsMap = []; // Stockera les indices des sièges pour chaque rang
-  
-  const tooltip = document.getElementById('tooltip');
-  const wrapper = document.getElementById('hemicycleWrapper');
-  const seatBadge = document.getElementById('seatBadge');
-  const seatBadgeInner = document.getElementById('seatBadgeInner');
-
-  function getPromotionYear() { const now = new Date(); return now.getMonth() >= 8 ? now.getFullYear() + 1 : now.getFullYear(); }
-  
-  function formatDateFrench(dateString) {
-    if (!dateString) return "";
-    const [year, month, day] = dateString.split('-');
-    const date = new Date(year, month - 1, day);
-    const jours = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
-    const mois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
-    return `Séance du ${jours[date.getDay()]} ${date.getDate()} ${mois[date.getMonth()]} ${date.getFullYear()}`;
-  }
-
-  function updateTexts() {
-    document.getElementById('displayNumero').textContent = currentData.numero || "???";
-    document.getElementById('displayDescription').textContent = `Scrutin public n°${currentData.numero} sur ${currentData.titre}`;
-    document.getElementById('displayLegislature').textContent = `Promotion ${getPromotionYear()}`;
-    document.getElementById('displayDate').textContent = formatDateFrench(currentData.date);
-    
-    const currentUrl = window.location.href.split('?')[0];
-    document.getElementById('sourceLink').href = currentUrl;
-    document.getElementById('sourceLink').textContent = currentUrl;
-    document.getElementById('compteRenduLink').href = currentUrl + '#compte-rendu';
-    document.getElementById('compteRenduLink').textContent = currentUrl + '#compte-rendu';
-  }
-
-  function updatePieChart(p, c, a) {
-    const total = p + c + a;
-    const pieSvg = document.getElementById('pieSvg');
-    pieSvg.innerHTML = "";
-    if (total === 0) return;
-    
-    const data = [
-      { value: p, color: COLORS.pour },
-      { value: c, color: COLORS.contre },
-      { value: a, color: COLORS.abstention }
-    ].filter(d => d.value > 0);
-
-    if (data.length === 1) {
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", "50"); circle.setAttribute("cy", "50"); circle.setAttribute("r", "50");
-      circle.setAttribute("fill", data[0].color);
-      pieSvg.appendChild(circle);
-      return;
-    }
-
-    let cumulativeAngle = 0;
-    const gap = 1.5;
-    data.forEach((d) => {
-      const percentage = d.value / total;
-      const angle = percentage * 360;
-      let startAngle = cumulativeAngle + gap / 2;
-      let endAngle = cumulativeAngle + angle - gap / 2;
-      if (endAngle < startAngle) endAngle = startAngle + 0.1;
-      
-      const startRad = (startAngle - 90) * Math.PI / 180.0;
-      const endRad = (endAngle - 90) * Math.PI / 180.0;
-      const r = 50; const cx = 50; const cy = 50;
-      const x1 = cx + r * Math.cos(startRad); const y1 = cy + r * Math.sin(startRad);
-      const x2 = cx + r * Math.cos(endRad); const y2 = cy + r * Math.sin(endRad);
-      const largeArcFlag = (endAngle - startAngle) > 180 ? 1 : 0;
-      
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`);
-      path.setAttribute("fill", d.color);
-      pieSvg.appendChild(path);
-      cumulativeAngle += angle;
-    });
-  }
-
-  function updateVoteData() {
-    const p = currentData.pour || 0;
-    const c = currentData.contre || 0;
-    const a = currentData.abstention || 0;
-    const votants = p + c + a;
-    const exprimes = p + c;
-    
-    // CORRECTION ICI : La majorité absolue se calcule sur les votants (suffrages exprimés + abstentions)
-    const majorite = Math.floor(votants / 2) + 1;
-
-    document.getElementById('txtVotants').textContent = votants;
-    document.getElementById('txtExprimes').textContent = exprimes;
-    document.getElementById('txtMajorite').textContent = majorite;
-    document.getElementById('txtPour').textContent = p;
-    document.getElementById('txtContre').textContent = c;
-    document.getElementById('txtAbstention').textContent = a;
-
-    const txtResultat = document.getElementById('txtResultat');
-    const pieResultat = document.getElementById('pieResultat');
-    
-    if (p > majorite) {
-      txtResultat.textContent = "L'Assemblée a adopté"; txtResultat.className = "resultat adopte";
-      pieResultat.textContent = "A"; pieResultat.className = "pie-chart-inner adopte";
-    } else {
-      txtResultat.textContent = "L'Assemblée n'a pas adopté"; txtResultat.className = "resultat rejete";
-      pieResultat.textContent = "R"; pieResultat.className = "pie-chart-inner rejete";
-    }
-    updatePieChart(p, c, a);
-  }
-
-  /**
-   * Calcule le rang de chaque siège du SVG en fonction de sa distance au centre.
-   */
-  function computeRows(seatPaths) {
-    seatRowsMap = [];
-    
-    // Centre théorique de l'hémicycle (basé sur les coordonnées du SVG)
-    const cx = 428 * 0.28; 
-    const cy = 445 * 0.28;
-
-    // 1. Calculer la distance de chaque siège
-    let seatsWithDist = seatPaths.map((pathD, index) => {
-      // Création temporaire pour getBBox
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", pathD);
-      document.body.appendChild(path); // Nécessaire pour getBBox
-      const bbox = path.getBBox();
-      path.remove();
-
-      const seatX = (bbox.x + bbox.width / 2) * 0.28;
-      const seatY = (bbox.y + bbox.height / 2) * 0.28;
-      const distance = Math.sqrt(Math.pow(seatX - cx, 2) + Math.pow(seatY - cy, 2));
-      return { index, distance, x: seatX };
-    });
-
-    // 2. Trier par distance pour identifier les rangs
-    seatsWithDist.sort((a, b) => a.distance - b.distance);
-
-    let currentIdx = 0;
-    for (let r = 0; r < SIEGES_PAR_RANG.length; r++) {
-      const count = SIEGES_PAR_RANG[r];
-      const rowSeats = seatsWithDist.slice(currentIdx, currentIdx + count);
-      
-      // Trier les sièges de ce rang de gauche à droite (x croissant)
-      rowSeats.sort((a, b) => a.x - b.x);
-      
-      seatRowsMap.push(rowSeats.map(s => s.index));
-      currentIdx += count;
-    }
-  }
-
-  function showTooltip(seatEl, actor, seatIndex) {
-    const nameParts = actor.nom.split(' ');
-    const prenomInitial = nameParts[0] ? nameParts[0].charAt(0) : '';
-    const nomInitial = nameParts.length > 1 ? nameParts[nameParts.length - 1].charAt(0) : '';
-    document.getElementById('tooltipInitiales').textContent = (prenomInitial + nomInitial).toUpperCase();
-    
-    const civilite = actor.genre === 'F' ? 'Mme' : 'M.';
-    document.getElementById('tooltipName').textContent = `${civilite} ${actor.nom}`;
-    document.getElementById('tooltipCirco').textContent = actor.circo;
-    
-    const groupeColor = GROUPES_COULEURS[actor.groupe] || "#8D949A";
-    const groupDiv = document.getElementById('tooltipGroup');
-    groupDiv.style.backgroundColor = groupeColor;
-    
-    const r = parseInt(groupeColor.slice(1,3),16);
-    const g = parseInt(groupeColor.slice(3,5),16);
-    const b = parseInt(groupeColor.slice(5,7),16);
-    groupDiv.style.color = ((0.299*r + 0.587*g + 0.114*b) / 255) > 0.6 ? "#222" : "#fff";
-    groupDiv.querySelector('span').textContent = actor.groupe;
-
-    tooltip.classList.add('visible');
-
-    const seatRect = seatEl.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    
-    seatBadge.style.left = (seatRect.left + seatRect.width / 2 - wrapperRect.left) + 'px';
-    seatBadge.style.top = (seatRect.top + seatRect.height / 2 - wrapperRect.top) + 'px';
-    seatBadge.style.display = 'block';
-    
-    seatBadgeInner.textContent = seatIndex;
-    seatBadgeInner.style.backgroundColor = COLORS[seatEl.getAttribute('data-status')];
-
-    if (currentSelected) currentSelected.classList.remove('selected');
-    currentSelected = seatEl;
-    seatEl.classList.add('selected');
-  }
-
-  function hideTooltip() {
-    tooltip.classList.remove('visible');
-    seatBadge.style.display = 'none';
-    if (currentSelected) currentSelected.classList.remove('selected');
-    currentSelected = null;
-  }
-
-  async function renderHemicycle() {
-    try {
-      const response = await fetch(BACK_URL);
-      const svgText = await response.text();
-      document.getElementById('hemicycleContainer').innerHTML = svgText;
-      const seatsGroup = document.getElementById('seatsGroup');
-
-      const seatPathsRes = await fetch(SEAT_PATHS_URL);
-      const seatPaths = await seatPathsRes.json();
-
-      // Analyse des rangs
-      computeRows(seatPaths);
-
-      const totalDeputes = currentData.sieges.length;
-      
-      // Déterminer le nombre de rangs nécessaires
-      let rangsNecessaires = 0;
-      let cumul = 0;
-      for (let i = 0; i < SIEGES_PAR_RANG.length; i++) {
-        cumul += SIEGES_PAR_RANG[i];
-        rangsNecessaires++;
-        if (cumul >= totalDeputes) break;
-      }
-
-      // Créer un dictionnaire des sièges à afficher
-      // indexSeat -> { status, data }
-      const activeSeats = new Map();
-      let depIndex = 0;
-
-      for (let r = 0; r < rangsNecessaires; r++) {
-        const rowIndices = seatRowsMap[r];
-        for (let i = 0; i < rowIndices.length; i++) {
-          const seatIndex = rowIndices[i];
-          if (depIndex < totalDeputes) {
-            const dep = currentData.sieges[depIndex];
-            activeSeats.set(seatIndex, { type: 'depute', dep: dep, order: depIndex + 1 });
-            depIndex++;
-          } else {
-            activeSeats.set(seatIndex, { type: 'vacant' });
-          }
-        }
-      }
-
-      // Dessiner les sièges
-      seatPaths.forEach((pathD, index) => {
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", pathD);
-        path.setAttribute("transform", "matrix(0.28,0,0,0.28,0,0)");
-        path.setAttribute("class", "seat");
-        seatsGroup.appendChild(path);
-        allSeats.push(path);
-
-        if (activeSeats.has(index)) {
-          const seatInfo = activeSeats.get(index);
-          
-          if (seatInfo.type === 'depute') {
-            const dep = seatInfo.dep;
-            const status = dep.vote || 'absent';
-            path.setAttribute('data-status', status);
-            path.setAttribute('data-seat-index', seatInfo.order);
-            path.style.fill = COLORS[status];
+        function init() {
+            if (sessionClosed) return;
+            if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+            displayCode = generateShortCode();
+            sessionId = APP_PREFIX + '-' + displayCode;
             
-            if (status === 'absent') {
-              path.classList.add('absent');
-              path.style.stroke = "#E0E0E0";
-              path.style.strokeWidth = "1.5";
-            } else {
-              path.style.stroke = "none";
+            const server = PEER_CONFIG.servers[currentServerIndex];
+            updateServerStatus(`Serveur : ${server.host} (essai ${currentServerIndex + 1}/${PEER_CONFIG.servers.length})`);
+            
+            const peerOptions = {
+                ...PEER_CONFIG.commonOptions,
+                host: server.host,
+                port: server.port,
+                path: server.path,
+                secure: server.secure,
+                key: server.key,
+                pingInterval: 5000
+            };
+            
+            try {
+                peer = new Peer(sessionId, peerOptions);
+            } catch (e) {
+                console.error('Erreur création Peer:', e);
+                switchToNextServer();
+                return;
+            }
+            
+            let opened = false;
+            
+            peer.on('open', (id) => {
+                opened = true;
+                reconnectAttempts = 0;
+                console.log('✅ Session ouverte avec ID:', id, 'sur', server.host);
+                updateServerStatus(`Serveur : ${server.host} ✓`);
+                const baseUrl = window.location.origin + window.location.pathname.replace('/admin', '/');
+                const link = `${baseUrl}?s=${displayCode}`;
+                document.getElementById('session-link').value = link;
+                document.getElementById('session-code-display').textContent = displayCode;
+                document.getElementById("qrcode").innerHTML = '';
+                new QRCode(document.getElementById("qrcode"), { text: link, width: 360, height: 360, colorDark: "#1e293b", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+                document.getElementById('connection-status').textContent = 'Prêt';
+                document.getElementById('connection-status').className = 'badge success';
+            });
+            
+            peer.on('connection', (conn) => {
+                connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
+                conn.on('data', (data) => handleUserData(conn, data));
+                conn.on('close', () => { voters.delete(conn.peer); connections = connections.filter(c => c.peer !== conn.peer); updateConnectedCount(); });
+                conn.on('error', (err) => { console.warn('Erreur connexion:', err); });
+            });
+            
+            peer.on('error', (err) => {
+                console.error('Erreur PeerJS:', err);
+                if (err.type === 'unavailable-id') {
+                    showToast('Code déjà utilisé, régénération...');
+                    try { peer.destroy(); } catch(e) {}
+                    setTimeout(() => init(), 500);
+                    return;
+                }
+                if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
+                    if (!opened) {
+                        switchToNextServer();
+                    } else {
+                        attemptReconnect();
+                    }
+                    return;
+                }
+                showToast('Erreur: ' + err.type);
+            });
+            
+            peer.on('disconnected', () => {
+                console.warn('Peer déconnecté, tentative de reconnexion...');
+                if (sessionClosed) return;
+                attemptReconnect();
+            });
+            
+            peer.on('close', () => {
+                if (sessionClosed) return;
+                attemptReconnect();
+            });
+            
+            const savedHistory = localStorage.getItem('vote_history_' + sessionId);
+            if (savedHistory) {
+                try { history = JSON.parse(savedHistory); } catch(e) { history = []; }
+            }
+        }
+        
+        function switchToNextServer() {
+            currentServerIndex = (currentServerIndex + 1) % PEER_CONFIG.servers.length;
+            console.warn('Bascule vers serveur:', PEER_CONFIG.servers[currentServerIndex].host);
+            try { peer.destroy(); } catch(e) {}
+            peer = null;
+            setTimeout(() => init(), 800);
+        }
+        
+        function attemptReconnect() {
+            if (sessionClosed) return;
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                console.warn('Trop de tentatives, bascule serveur');
+                reconnectAttempts = 0;
+                switchToNextServer();
+                return;
+            }
+            reconnectAttempts++;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(() => {
+                if (sessionClosed) return;
+                if (peer && !peer.destroyed && peer.disconnected) {
+                    try { peer.reconnect(); return; } catch(e) {}
+                }
+                const savedCode = displayCode;
+                const savedSessionId = sessionId;
+                try { peer.destroy(); } catch(e) {}
+                peer = null;
+                setTimeout(() => {
+                    if (sessionClosed) return;
+                    displayCode = savedCode;
+                    sessionId = savedSessionId;
+                    recreatePeerWithCurrentCode();
+                }, 500);
+            }, Math.min(1000 * reconnectAttempts, 8000));
+        }
+        
+        function recreatePeerWithCurrentCode() {
+            if (sessionClosed) return;
+            const server = PEER_CONFIG.servers[currentServerIndex];
+            const peerOptions = {
+                ...PEER_CONFIG.commonOptions,
+                host: server.host,
+                port: server.port,
+                path: server.path,
+                secure: server.secure,
+                key: server.key,
+                pingInterval: 5000
+            };
+            try {
+                peer = new Peer(sessionId, peerOptions);
+            } catch (e) {
+                switchToNextServer();
+                return;
+            }
+            peer.on('open', (id) => {
+                console.log('✅ Reconnexion réussie sur', server.host);
+                reconnectAttempts = 0;
+                updateServerStatus(`Serveur : ${server.host} ✓`);
+                document.getElementById('connection-status').textContent = 'Prêt';
+                document.getElementById('connection-status').className = 'badge success';
+                if (voteActive && currentVote) {
+                    broadcast({ type: 'new_vote', vote: { question: currentVote.question, mode: currentVote.mode, options: currentVote.options, maxChoices: currentVote.maxChoices } });
+                }
+            });
+            peer.on('connection', (conn) => {
+                connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
+                conn.on('data', (data) => handleUserData(conn, data));
+                conn.on('close', () => { voters.delete(conn.peer); connections = connections.filter(c => c.peer !== conn.peer); updateConnectedCount(); });
+            });
+            peer.on('error', (err) => {
+                console.error('Erreur PeerJS (reconnexion):', err);
+                if (err.type === 'unavailable-id') {
+                    try { peer.destroy(); } catch(e) {}
+                    setTimeout(() => init(), 500);
+                } else {
+                    attemptReconnect();
+                }
+            });
+            peer.on('disconnected', () => { if (!sessionClosed) attemptReconnect(); });
+            peer.on('close', () => { if (!sessionClosed) attemptReconnect(); });
+        }
+        
+        function updateServerStatus(text) {
+            const el = document.getElementById('server-status');
+            if (el) el.textContent = text;
+        }
+        
+        function generateShortCode() { const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'; let code = ''; for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length)); return code; }
+        function openAdmin() { document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.remove('hidden'); }
+        function switchTab(tab) { document.getElementById('tab-create').classList.toggle('active', tab === 'create'); document.getElementById('tab-history').classList.toggle('active', tab === 'history'); document.getElementById('create-tab-content').classList.toggle('hidden', tab !== 'create'); document.getElementById('history-tab-content').classList.toggle('hidden', tab !== 'history'); if (tab === 'history') renderHistory(); }
+        
+        function sendDraft() { if (draftTimeout) clearTimeout(draftTimeout); draftTimeout = setTimeout(() => { const draft = getCurrentDraft(); if (!draft) { broadcast({ type: 'draft_cancelled' }); return; } broadcast({ type: 'draft', draft }); }, 400); }
+        function getCurrentDraft() { const question = document.getElementById('question-input').value.trim(); const mode = document.getElementById('vote-mode').value; const maxChoices = parseInt(document.getElementById('max-choices').value) || 1; let options = []; if (mode === 'multiple') document.querySelectorAll('.option-input').forEach(inp => { if (inp.value.trim()) options.push(inp.value.trim()); }); if (!question && options.length === 0) return null; return { question, mode, maxChoices, options }; }
+        
+        function handleUserData(conn, data) {
+            if (data.type === 'hello') {
+                if (voteActive && currentVote) conn.send({ type: 'state', state: 'voting', vote: currentVote, hasVoted: hasVoted.has(conn.peer) });
+                else if (!voteActive && currentVote) conn.send({ type: 'state', state: 'results' });
+                else { conn.send({ type: 'state', state: 'waiting' }); const draft = getCurrentDraft(); if (draft) conn.send({ type: 'draft', draft }); }
+                return;
+            }
+            if (data.type === 'vote') {
+                if (!voteActive || hasVoted.has(conn.peer)) return;
+                hasVoted.add(conn.peer);
+                currentVote.votes.push({ connId: conn.peer, answers: data.answers });
+                updateVoteProgress();
+                if (hasVoted.size >= voters.size && voters.size > 0) finishVote();
+            }
+        }
+        function updateConnectedCount() { document.getElementById('connected-count').textContent = voters.size; if (voteActive && waitingForVotes) document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
+        function toggleVoteMode() { const mode = document.getElementById('vote-mode').value; document.getElementById('simple-options').classList.toggle('hidden', mode !== 'simple'); document.getElementById('multiple-options').classList.toggle('hidden', mode !== 'multiple'); }
+        function addOption() { const list = document.getElementById('options-list'); const div = document.createElement('div'); div.className = 'vote-option'; div.innerHTML = `<input type="text" placeholder="Nom de l'option" class="option-input" oninput="sendDraft()"><button onclick="this.parentElement.remove(); sendDraft();">×</button>`; list.appendChild(div); }
+        
+        function startVote() {
+            const question = document.getElementById('question-input').value.trim(); if (!question) { showToast('Veuillez entrer une question.'); return; }
+            const mode = document.getElementById('vote-mode').value; let options = []; let maxChoices = 1;
+            if (mode === 'simple') options = ['Pour', 'Abstention', 'Contre'];
+            else { maxChoices = parseInt(document.getElementById('max-choices').value) || 1; document.querySelectorAll('.option-input').forEach(inp => { if (inp.value.trim()) options.push(inp.value.trim()); }); if (options.length < 2) { showToast('Ajoutez au moins 2 options.'); return; } }
+            currentVote = { id: Date.now(), question, mode, options, maxChoices, votes: [], timestamp: new Date().toISOString(), expectedVoters: voters.size };
+            hasVoted.clear(); voteActive = true; waitingForVotes = true;
+            broadcast({ type: 'new_vote', vote: { question, mode, options, maxChoices } });
+            document.getElementById('create-section').classList.add('hidden'); document.getElementById('vote-section').classList.remove('hidden'); document.getElementById('results-section').classList.add('hidden');
+            document.getElementById('current-question-display').textContent = question; document.getElementById('votes-received').textContent = '0'; document.getElementById('remaining-voters').textContent = voters.size;
+            showToast('Vote lancé !');
+        }
+        function broadcast(message) { connections.forEach(conn => { if (conn.open) { try { conn.send(message); } catch(e) { console.warn('Broadcast error:', e); } } }); }
+        function updateVoteProgress() { document.getElementById('votes-received').textContent = hasVoted.size; document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
+        function skipWaiting() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
+        function showResults() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
+        
+        function calculateResults() {
+            const options = currentVote.options;
+            const mode = currentVote.mode;
+            const counts = {}; options.forEach(opt => counts[opt] = 0);
+            let totalExpressed = 0;
+            let totalVoters = hasVoted.size;
+            currentVote.votes.forEach(vote => {
+                if (mode === 'simple') {
+                    const idx = vote.answers[0];
+                    if (idx !== undefined && options[idx]) {
+                        counts[options[idx]]++;
+                        if (options[idx] === 'Pour' || options[idx] === 'Contre') totalExpressed++;
+                    }
+                } else {
+                    if (vote.answers.length === 0) { /* abstention */ }
+                    else vote.answers.forEach(idx => { if (options[idx]) { counts[options[idx]]++; totalExpressed++; } });
+                }
+            });
+            const absoluteMajority = Math.floor(totalExpressed / 2) + 1;
+            const sorted = Object.entries(counts).map(([name, count]) => ({ name, count, percentage: totalExpressed > 0 ? (count / totalExpressed) * 100 : 0 })).sort((a, b) => b.count - a.count);
+            let winners = [];
+            if (mode === 'multiple') winners = sorted.slice(0, currentVote.maxChoices).filter(w => w.count > 0);
+            else {
+                const pour = counts['Pour'] || 0;
+                if (pour > absoluteMajority) winners = [{ name: 'Pour', count: pour, percentage: 0 }];
+                else winners = [{ name: 'Contre', count: counts['Contre'] || 0, percentage: 0 }];
+            }
+            return { counts, sorted, totalExpressed, totalVoters, absoluteMajority, winners, mode, options };
+        }
+        
+        function buildHemicycleData() {
+            const counts = { pour: 0, contre: 0, abstention: 0 };
+            const sieges = [];
+            let seatIndex = 1;
+
+            currentVote.votes.forEach(vote => {
+                const idx = vote.answers[0];
+                let voteType = 'absent';
+                if (idx !== undefined && currentVote.options[idx]) {
+                    const opt = currentVote.options[idx];
+                    if (opt === 'Pour') voteType = 'pour';
+                    else if (opt === 'Contre') voteType = 'contre';
+                    else if (opt === 'Abstention') voteType = 'abstention';
+                }
+                if (voteType === 'pour') counts.pour++;
+                else if (voteType === 'contre') counts.contre++;
+                else if (voteType === 'abstention') counts.abstention++;
+
+                sieges.push({
+                    nom: `Siege ${seatIndex}`,
+                    genre: Math.random() < 0.5 ? 'M' : 'F',
+                    circo: 'circonscription',
+                    groupe: 'groupe politique',
+                    vote: voteType
+                });
+                seatIndex++;
+            });
+
+            const expected = currentVote.expectedVoters || voters.size;
+            while (sieges.length < expected) {
+                sieges.push({
+                    nom: `Siege ${seatIndex}`,
+                    genre: Math.random() < 0.5 ? 'M' : 'F',
+                    circo: 'circonscription',
+                    groupe: 'groupe politique',
+                    vote: 'absent'
+                });
+                seatIndex++;
             }
 
-            path.addEventListener('click', (e) => {
-              e.stopPropagation();
-              if (path.classList.contains('absent')) return;
-              if (currentSelected === path) hideTooltip();
-              else showTooltip(path, dep, seatInfo.order);
-            });
-          } else {
-            // Siège vide (vacant)
-            path.setAttribute('data-status', 'vacant');
-            path.classList.add('vacant');
-          }
-        } else {
-          // Siège complètement masqué (rang non atteint)
-          path.classList.add('hidden-seat');
+            return {
+                numero: displayCode,
+                date: new Date().toISOString().slice(0, 10),
+                titre: currentVote.question,
+                pour: counts.pour,
+                contre: counts.contre,
+                abstention: counts.abstention,
+                sieges
+            };
         }
-      });
+        
+        function finishVote() {
+            if (!voteActive) return;
+            voteActive = false; waitingForVotes = false;
+            const results = calculateResults();
+            const entry = {
+                voteId: currentVote.id,
+                question: currentVote.question,
+                mode: currentVote.mode,
+                timestamp: currentVote.timestamp,
+                endedAt: new Date().toISOString()
+            };
+            if (currentVote.mode === 'simple') {
+                entry.hemicycleData = buildHemicycleData();
+            } else {
+                entry.results = results;
+            }
+            history.push(entry);
+            try { localStorage.setItem('vote_history_' + sessionId, JSON.stringify(history)); } catch(e) {}
+            displayResults(entry);
+            broadcast({ type: 'results', results });
+        }
+        
+        function buildHemicycleUrl(hemicycleData) {
+            const jsonStr = JSON.stringify(hemicycleData);
+            const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+            return `${HEMICYCLE_BASE}?data=${encodeURIComponent(encoded)}`;
+        }
+        
+        function displayResults(entry) {
+            document.getElementById('vote-section').classList.add('hidden');
+            document.getElementById('results-section').classList.remove('hidden');
+            document.getElementById('result-question').textContent = entry.question;
 
-    } catch (err) {
-      console.error(err);
-      document.getElementById('hemicycleContainer').innerHTML = `<div class="error">Erreur de chargement.</div>`;
-    }
-  }
+            const hemiWrap = document.getElementById('hemicycle-wrap');
+            const elecWrap = document.getElementById('election-results');
 
-  function startApp(data) {
-    currentData = data;
-    document.getElementById('mainBody').className = 'mode-resultat';
-    updateTexts();
-    updateVoteData();
-    renderHemicycle();
-  }
+            if (entry.mode === 'simple' && entry.hemicycleData) {
+                hemiWrap.classList.remove('hidden');
+                elecWrap.classList.add('hidden');
+                document.getElementById('hemicycle-frame').src = buildHemicycleUrl(entry.hemicycleData);
+            } else {
+                hemiWrap.classList.add('hidden');
+                elecWrap.classList.remove('hidden');
+                renderElectionResults(entry.results);
+            }
+        }
+        
+        function renderElectionResults(results) {
+            document.getElementById('total-votes').textContent = results.totalExpressed;
+            document.getElementById('absolute-majority').textContent = results.absoluteMajority;
+            document.getElementById('total-voters').textContent = results.totalVoters;
+            const list = document.getElementById('results-list'); list.innerHTML = '';
+            results.sorted.forEach(item => {
+                const isWinner = results.winners.some(w => w.name === item.name);
+                const div = document.createElement('div');
+                div.className = 'result-item' + (isWinner ? ' winner' : '');
+                div.innerHTML = `<div style="flex: 1;"><div class="flex-between"><span style="font-weight: ${isWinner ? '700' : '400'};">${escapeHtml(item.name)}</span><span>${item.count} voix (${item.percentage.toFixed(1)}%)</span></div><div class="result-bar"><div class="result-bar-fill" style="width: ${item.percentage}%; ${isWinner ? 'background: var(--success);' : ''}"></div></div></div>${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Élu</span>' : ''}`;
+                list.appendChild(div);
+            });
+        }
+        
+        function newVote() {
+            document.getElementById('results-section').classList.add('hidden');
+            document.getElementById('vote-section').classList.add('hidden');
+            document.getElementById('create-section').classList.remove('hidden');
+            document.getElementById('question-input').value = '';
+            document.getElementById('options-list').innerHTML = '';
+            document.getElementById('max-choices').value = '1';
+            document.getElementById('vote-mode').value = 'simple';
+            toggleVoteMode();
+            currentVote = null; hasVoted.clear();
+            broadcast({ type: 'reset' }); broadcast({ type: 'draft_cancelled' });
+        }
+        
+        function renderHistory() {
+            const list = document.getElementById('history-list'); list.innerHTML = '';
+            if (history.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: var(--text-light); padding: 1rem;">Aucun vote dans l\'historique.</p>';
+                return;
+            }
+            history.forEach((entry) => {
+                const div = document.createElement('div');
+                div.className = 'history-item';
+                let resume = '';
+                if (entry.mode === 'simple' && entry.hemicycleData) {
+                    const hd = entry.hemicycleData;
+                    const exprimes = hd.pour + hd.contre;
+                    const majorite = Math.floor(exprimes / 2) + 1;
+                    const res = hd.pour > majorite ? 'Adopté' : 'Rejeté';
+                    resume = `Pour : ${hd.pour} · Contre : ${hd.contre} · Abstention : ${hd.abstention} — <strong>${res}</strong>`;
+                } else if (entry.results) {
+                    const r = entry.results;
+                    const elus = r.winners.map(w => escapeHtml(w.name)).join(', ') || 'Aucun';
+                    resume = `${r.totalExpressed} suffrages exprimés — <strong>Élu(s) : ${elus}</strong>`;
+                }
+                div.innerHTML = `<div class="flex-between"><strong>${escapeHtml(entry.question)}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">${resume}</div>`;
+                div.onclick = () => toggleHistoryDetail(div, entry);
+                list.appendChild(div);
+            });
+        }
+        
+        function toggleHistoryDetail(element, entry) {
+            const existing = element.querySelector('.history-detail');
+            if (existing) { existing.remove(); return; }
+            const detail = document.createElement('div');
+            detail.className = 'history-detail';
+            if (entry.mode === 'simple' && entry.hemicycleData) {
+                detail.innerHTML = `<div class="hemicycle-wrap history-mode"><iframe class="hemicycle-frame" src="${buildHemicycleUrl(entry.hemicycleData)}" frameborder="0"></iframe></div>`;
+            } else if (entry.results) {
+                const r = entry.results;
+                let html = `<div class="grid-3" style="margin-bottom: 1rem;">
+                    <div class="stat"><div class="stat-value">${r.totalExpressed}</div><div class="stat-label">Suffrages exprimés</div></div>
+                    <div class="stat"><div class="stat-value">${r.absoluteMajority}</div><div class="stat-label">Majorité absolue</div></div>
+                    <div class="stat"><div class="stat-value">${r.totalVoters}</div><div class="stat-label">Votants</div></div>
+                </div><div>`;
+                r.sorted.forEach(item => {
+                    const isWinner = r.winners.some(w => w.name === item.name);
+                    html += `<div class="result-item${isWinner ? ' winner' : ''}"><div style="flex: 1;"><div class="flex-between"><span style="font-weight: ${isWinner ? '700' : '400'};">${escapeHtml(item.name)}</span><span>${item.count} voix (${item.percentage.toFixed(1)}%)</span></div><div class="result-bar"><div class="result-bar-fill" style="width: ${item.percentage}%; ${isWinner ? 'background: var(--success);' : ''}"></div></div></div>${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Élu</span>' : ''}</div>`;
+                });
+                html += '</div>';
+                detail.innerHTML = html;
+            } else {
+                detail.innerHTML = '<p>Données indisponibles pour ce vote.</p>';
+            }
+            element.appendChild(detail);
+        }
+        
+        function closeSessionAndExport() {
+            if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return;
+            sessionClosed = true;
+            if (history.length > 0) exportPDF();
+            broadcast({ type: 'close' });
+            try { localStorage.removeItem('vote_history_' + sessionId); } catch(e) {}
+            history = [];
+            connections.forEach(conn => { if (conn.open) conn.close(); });
+            connections = []; voters.clear();
+            if (peer) { try { peer.destroy(); } catch(e) {} }
+            document.getElementById('home-section').classList.add('hidden');
+            document.getElementById('admin-section').classList.add('hidden');
+            document.getElementById('closed-section').classList.remove('hidden');
+        }
+        
+        /**
+         * PDF en 2 parties :
+         * 1) Sommaire (infos générales + table des votes)
+         * 2) Détail par vote (1 page par vote) — rendu identique à export.js
+         *    pour les oui/non (capture #pageContent de hemicycle.html),
+         *    ancien format texte pour les élections.
+         */
+        async function exportPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pageW = doc.internal.pageSize.getWidth();
+            const pageH = doc.internal.pageSize.getHeight();
 
-  document.addEventListener('DOMContentLoaded', () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const dataParam = urlParams.get('data');
+            // ====== PARTIE 1 : SOMMAIRE ======
+            doc.setFontSize(20);
+            doc.setFont(undefined, 'bold');
+            doc.text('Rapport de session', pageW / 2, 25, { align: 'center' });
 
-    if (dataParam) {
-      try {
-        const decodedStr = decodeURIComponent(escape(atob(dataParam)));
-        const data = JSON.parse(decodedStr);
-        startApp(data);
-        return;
-      } catch (e) {
-        console.error("Erreur URL", e);
-        alert("Données URL invalides.");
-      }
-    }
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'normal');
+            let y = 45;
+            doc.text(`Code de session : ${displayCode}`, 14, y); y += 7;
+            doc.text(`Date de la session : ${sessionStartTime.toLocaleString()}`, 14, y); y += 7;
+            doc.text(`Nombre de votes : ${history.length}`, 14, y); y += 12;
 
-    document.getElementById('btnGenerate').addEventListener('click', () => {
-      const input = document.getElementById('jsonInput').value;
-      try {
-        const data = JSON.parse(input);
-        startApp(data);
-      } catch (e) {
-        alert("JSON invalide.");
-      }
-    });
-  });
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('Sommaire des votes', 14, y); y += 8;
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
 
-  document.getElementById('tooltipClose').addEventListener('click', (e) => {
-    e.stopPropagation();
-    hideTooltip();
-  });
-  document.addEventListener('click', (e) => {
-    if (!tooltip.contains(e.target) && !e.target.classList.contains('seat')) hideTooltip();
-  });
-</script>
+            history.forEach((entry, index) => {
+                if (y > pageH - 30) { doc.addPage(); y = 20; }
+                doc.setFont(undefined, 'bold');
+                const qLines = doc.splitTextToSize(`Vote ${index + 1} : ${entry.question}`, pageW - 28);
+                doc.text(qLines, 14, y);
+                y += qLines.length * 5 + 1;
+                doc.setFont(undefined, 'normal');
+                let resultLine = '';
+                if (entry.mode === 'simple' && entry.hemicycleData) {
+                    const hd = entry.hemicycleData;
+                    const exprimes = hd.pour + hd.contre;
+                    const majorite = Math.floor(exprimes / 2) + 1;
+                    const res = hd.pour > majorite ? 'ADOPTÉ' : 'REJETÉ';
+                    resultLine = `Résultat : ${res} — Pour : ${hd.pour}, Contre : ${hd.contre}, Abstention : ${hd.abstention}`;
+                } else if (entry.results) {
+                    const r = entry.results;
+                    const elus = r.winners.map(w => w.name).join(', ') || 'Aucun';
+                    resultLine = `Élection — Élu(s) : ${elus}`;
+                }
+                const rLines = doc.splitTextToSize(resultLine, pageW - 28);
+                doc.text(rLines, 14, y);
+                y += rLines.length * 5 + 4;
+            });
+
+            // ====== PARTIE 2 : DÉTAIL (1 PAGE PAR VOTE) ======
+            for (let i = 0; i < history.length; i++) {
+                const entry = history[i];
+                doc.addPage();
+
+                if (entry.mode === 'simple' && entry.hemicycleData) {
+                    try {
+                        const captured = await captureHemicyclePage(entry.hemicycleData);
+                        if (!captured) throw new Error('capture vide');
+
+                        const imgWidth = captured.width;
+                        const imgHeight = captured.height;
+                        const margin = 10;
+                        const maxW = pageW - (margin * 2);
+                        const maxH = pageH - (margin * 2);
+                        const ratio = Math.min(maxW / imgWidth, maxH / imgHeight);
+                        const newImgWidth = imgWidth * ratio;
+                        const newImgHeight = imgHeight * ratio;
+                        const x = (pageW - newImgWidth) / 2;
+                        const yImg = (pageH - newImgHeight) / 2;
+
+                        doc.addImage(captured.dataUrl, 'JPEG', x, yImg, newImgWidth, newImgHeight);
+                    } catch (e) {
+                        console.warn('Capture hémicycle échec, fallback texte:', e);
+                        y = 20;
+                        doc.setFontSize(15);
+                        doc.setFont(undefined, 'bold');
+                        const titleLines = doc.splitTextToSize(`Vote ${i + 1} : ${entry.question}`, pageW - 28);
+                        doc.text(titleLines, 14, y);
+                        y += titleLines.length * 6 + 6;
+                        doc.setFont(undefined, 'normal');
+                        doc.setFontSize(11);
+                        const hd = entry.hemicycleData;
+                        const exprimes = hd.pour + hd.contre;
+                        const majorite = Math.floor(exprimes / 2) + 1;
+                        doc.text(`Suffrages exprimés : ${exprimes} | Majorité absolue : ${majorite}`, 14, y); y += 7;
+                        doc.text(`Pour : ${hd.pour}`, 14, y); y += 6;
+                        doc.text(`Contre : ${hd.contre}`, 14, y); y += 6;
+                        doc.text(`Abstention : ${hd.abstention}`, 14, y); y += 6;
+                        doc.setFont(undefined, 'bold');
+                        doc.text(`Résultat : ${hd.pour > majorite ? 'ADOPTÉ' : 'REJETÉ'}`, 14, y);
+                    }
+                } else if (entry.results) {
+                    y = 20;
+                    doc.setFontSize(15);
+                    doc.setFont(undefined, 'bold');
+                    const titleLines = doc.splitTextToSize(`Vote ${i + 1} : ${entry.question}`, pageW - 28);
+                    doc.text(titleLines, 14, y);
+                    y += titleLines.length * 6 + 6;
+                    doc.setFont(undefined, 'normal');
+
+                    const r = entry.results;
+                    doc.setFontSize(11);
+                    doc.text(`Mode : Élection (${entry.mode === 'multiple' ? 'choix multiples' : 'simple'})`, 14, y); y += 7;
+                    doc.text(`Suffrages exprimés : ${r.totalExpressed}`, 14, y); y += 6;
+                    doc.text(`Majorité absolue : ${r.absoluteMajority}`, 14, y); y += 6;
+                    doc.text(`Votants : ${r.totalVoters}`, 14, y); y += 10;
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Détail par proposition :', 14, y); y += 7;
+                    doc.setFont(undefined, 'normal');
+                    r.sorted.forEach(item => {
+                        if (y > pageH - 20) { doc.addPage(); y = 20; }
+                        const isWinner = r.winners.some(w => w.name === item.name);
+                        const line = `  - ${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%)${isWinner ? ' [ÉLU]' : ''}`;
+                        doc.text(line, 14, y); y += 6;
+                    });
+                }
+            }
+
+            doc.save(`rapport_session_${displayCode}_${sessionStartTime.toISOString().slice(0, 10)}.pdf`);
+        }
+
+        /**
+         * Charge hemicycle.html?data=... dans une iframe cachée, attend le rendu,
+         * puis capture #pageContent avec EXACTEMENT les options de export.js.
+         * Retourne { dataUrl, width, height } (dimensions du canvas en px).
+         */
+        function captureHemicyclePage(hemicycleData) {
+            const url = buildHemicycleUrl(hemicycleData);
+            return new Promise((resolve) => {
+                const iframe = document.createElement('iframe');
+                iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:1200px;height:1800px;border:0;visibility:hidden;';
+                iframe.src = url;
+                document.body.appendChild(iframe);
+
+                let resolved = false;
+                const finish = (result) => {
+                    if (resolved) return;
+                    resolved = true;
+                    try { iframe.remove(); } catch(e) {}
+                    resolve(result);
+                };
+
+                const timeout = setTimeout(() => {
+                    console.warn('Timeout capture hémicycle');
+                    finish(null);
+                }, 8000);
+
+                iframe.onload = async () => {
+                    await new Promise(r => setTimeout(r, 2000));
+
+                    try {
+                        const idoc = iframe.contentDocument || iframe.contentWindow.document;
+                        const pageContent = idoc.getElementById('pageContent');
+                        if (!pageContent) {
+                            clearTimeout(timeout);
+                            return finish(null);
+                        }
+
+                        let tries = 0;
+                        while (typeof iframe.contentWindow.html2canvas === 'undefined' && tries < 30) {
+                            await new Promise(r => setTimeout(r, 200));
+                            tries++;
+                        }
+                        if (typeof iframe.contentWindow.html2canvas === 'undefined') {
+                            clearTimeout(timeout);
+                            return finish(null);
+                        }
+
+                        const canvas = await iframe.contentWindow.html2canvas(pageContent, {
+                            scale: 2,
+                            useCORS: true,
+                            backgroundColor: "#ffffff",
+                            scrollY: 0,
+                            scrollX: 0
+                        });
+
+                        clearTimeout(timeout);
+                        finish({
+                            dataUrl: canvas.toDataURL('image/jpeg', 1.0),
+                            width: canvas.width,
+                            height: canvas.height
+                        });
+                    } catch (e) {
+                        console.warn('html2canvas iframe échec:', e);
+                        clearTimeout(timeout);
+                        finish(null);
+                    }
+                };
+            });
+        }
+        
+        function copyLink() { const input = document.getElementById('session-link'); input.select(); document.execCommand('copy'); showToast('Lien copié !'); }
+        function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+        function showToast(message) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
+        
+        window.onload = () => { init(); toggleVoteMode(); addOption(); addOption(); };
+        window.onbeforeunload = () => { if (peer) try { peer.destroy(); } catch(e) {} };
+    </script>
 </body>
 </html>

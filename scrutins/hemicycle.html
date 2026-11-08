@@ -273,7 +273,9 @@
     const a = currentData.abstention || 0;
     const votants = p + c + a;
     const exprimes = p + c;
-    const majorite = Math.floor(exprimes / 2) + 1;
+    
+    // CORRECTION ICI : La majorité absolue se calcule sur les votants (suffrages exprimés + abstentions)
+    const majorite = Math.floor(votants / 2) + 1;
 
     document.getElementById('txtVotants').textContent = votants;
     document.getElementById('txtExprimes').textContent = exprimes;
