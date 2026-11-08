@@ -274,8 +274,8 @@
     const votants = p + c + a;
     const exprimes = p + c;
     
-    // CORRECTION ICI : La majorité absolue se calcule sur les votants (suffrages exprimés + abstentions)
-    const majorite = Math.floor(votants / 2) + 1;
+    // Affichage de la majorité absolue (pour information, basée sur les exprimés)
+    const majorite = Math.floor(exprimes / 2) + 1;
 
     document.getElementById('txtVotants').textContent = votants;
     document.getElementById('txtExprimes').textContent = exprimes;
@@ -287,7 +287,9 @@
     const txtResultat = document.getElementById('txtResultat');
     const pieResultat = document.getElementById('pieResultat');
     
-    if (p > majorite) {
+    // NOUVELLE RÈGLE SIMPLIFIÉE : On compare uniquement le nombre de Pour et de Contre.
+    // Si Pour > Contre, c'est adopté. Sinon (égalité ou moins), c'est rejeté.
+    if (p > c) {
       txtResultat.textContent = "L'Assemblée a adopté"; txtResultat.className = "resultat adopte";
       pieResultat.textContent = "A"; pieResultat.className = "pie-chart-inner adopte";
     } else {
