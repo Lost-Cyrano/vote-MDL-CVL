@@ -10,7 +10,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="config.js"></script>
     <style>
-        :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --text-light: #64748b; --border: #e2e8f0; --success: #10b981; --danger: #ef4444; --warning: #f59e0b; }
+        :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --text-light: #64748b; --border: #e2e8f0; --success: #10b981; --danger: #ef4444; --warning: #f59e0b; --an: #1b558a; }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
         body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 1rem; }
         .container { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 1rem; }
@@ -100,6 +100,9 @@
         #results-section { padding-bottom: 0; }
         #results-section .results-header { padding-bottom: 1rem; }
         #election-results { padding-bottom: 1.5rem; }
+        .numero-input-wrap { display: flex; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.75rem; }
+        .numero-input-wrap input { margin-bottom: 0; }
+        .numero-input-wrap label { font-size: 0.85rem; color: var(--text-light); display: block; margin-bottom: 0.25rem; }
     </style>
 </head>
 <body>
@@ -107,6 +110,17 @@
         <div id="home-section" class="card">
             <h1>Session de vote</h1>
             <p style="text-align: center; margin-bottom: 1rem;">Scannez ce QR Code ou entrez le code pour rejoindre.</p>
+
+            <div class="numero-input-wrap">
+                <div style="flex: 1;">
+                    <label for="start-numero-input">Numéro du premier scrutin de cette session</label>
+                    <input type="number" id="start-numero-input" min="1" value="1" onchange="saveStartNumero()">
+                </div>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 1rem;">
+                Ex. : si le dernier scrutin public était le n°357, saisissez <strong>358</strong> — les votes seront numérotés 0358, 0359, 0360…
+            </p>
+
             <div class="qr-hero"><div id="qrcode"></div></div>
             <div class="session-code-display">
                 <div class="session-code-label">Code de session</div>
@@ -132,6 +146,7 @@
             <div id="create-tab-content" style="margin-top: 1rem;">
                 <div id="create-section" class="card">
                     <h2>Nouveau vote</h2>
+                    <p style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 0.75rem;">Prochain numéro de scrutin : <strong id="next-numero-display">0001</strong></p>
                     <label>Question</label>
                     <textarea id="question-input" rows="2" placeholder="Ex: Êtes-vous favorables..." oninput="sendDraft()"></textarea>
                     <label>Mode de réponse</label>
@@ -150,7 +165,7 @@
                     <button onclick="startVote()" style="margin-top: 1rem;">Lancer le vote</button>
                 </div>
                 <div id="vote-section" class="card hidden">
-                    <h2>Vote en cours</h2>
+                    <h2>Vote en cours <span id="vote-numero-badge" class="badge info"></span></h2>
                     <p id="current-question-display" style="font-weight: 600; margin-bottom: 0.5rem;"></p>
                     <div class="flex-between">
                         <span>Votants restants : <strong id="remaining-voters">0</strong></span>
@@ -161,7 +176,7 @@
                 </div>
                 <div id="results-section" class="card hidden">
                     <div class="results-header">
-                        <h2>Résultats</h2>
+                        <h2>Résultats <span id="result-numero-badge" class="badge info"></span></h2>
                         <p id="result-question" style="font-weight: 600;"></p>
                     </div>
                     <div class="hemicycle-wrap" id="hemicycle-wrap">
@@ -201,9 +216,25 @@
         let sessionStartTime = new Date(), voteActive = false, waitingForVotes = false;
         let draftTimeout = null, sessionClosed = false;
         let currentServerIndex = 0, reconnectTimer = null, reconnectAttempts = 0;
+        let startNumero = 1; // numéro du premier scrutin de la session
         const MAX_RECONNECT_ATTEMPTS = 30;
 
         const HEMICYCLE_BASE = "https://vote.honore-romane.fr/scrutins/hemicycle.html";
+
+        // === Couleurs PDF ===
+        const PDF_COLORS = {
+            an: [27, 85, 138],       // bleu Assemblée
+            anLight: [232, 240, 248],
+            pour: [32, 107, 167],
+            contre: [227, 64, 81],
+            abstention: [159, 168, 173],
+            success: [16, 185, 129],
+            danger: [239, 68, 68],
+            text: [30, 41, 59],
+            textLight: [100, 116, 139],
+            border: [226, 232, 240],
+            white: [255, 255, 255]
+        };
 
         function init() {
             if (sessionClosed) return;
@@ -290,6 +321,43 @@
             if (savedHistory) {
                 try { history = JSON.parse(savedHistory); } catch(e) { history = []; }
             }
+            const savedStart = localStorage.getItem('vote_start_numero_' + sessionId);
+            if (savedStart) {
+                startNumero = parseInt(savedStart) || 1;
+                document.getElementById('start-numero-input').value = startNumero;
+            }
+            updateNextNumeroDisplay();
+        }
+
+        function saveStartNumero() {
+            const input = document.getElementById('start-numero-input');
+            let v = parseInt(input.value);
+            if (isNaN(v) || v < 1) v = 1;
+            startNumero = v;
+            input.value = v;
+            try { localStorage.setItem('vote_start_numero_' + sessionId, String(v)); } catch(e) {}
+            updateNextNumeroDisplay();
+        }
+
+        function updateNextNumeroDisplay() {
+            const next = startNumero + history.length;
+            const el = document.getElementById('next-numero-display');
+            if (el) el.textContent = formatNumero(next);
+        }
+
+        function formatNumero(n) {
+            return String(n).padStart(4, '0');
+        }
+
+        function getVoteNumero(entry) {
+            // Si l'entrée a déjà un numéro stocké, on l'utilise
+            if (entry && entry.numero) return entry.numero;
+            // Sinon on calcule à partir de l'index dans l'historique
+            if (entry && entry.voteId) {
+                const idx = history.findIndex(h => h.voteId === entry.voteId);
+                if (idx >= 0) return formatNumero(startNumero + idx);
+            }
+            return formatNumero(startNumero);
         }
         
         function switchToNextServer() {
@@ -380,7 +448,7 @@
         }
         
         function generateShortCode() { const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'; let code = ''; for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length)); return code; }
-        function openAdmin() { document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.remove('hidden'); }
+        function openAdmin() { saveStartNumero(); document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.remove('hidden'); updateNextNumeroDisplay(); }
         function switchTab(tab) { document.getElementById('tab-create').classList.toggle('active', tab === 'create'); document.getElementById('tab-history').classList.toggle('active', tab === 'history'); document.getElementById('create-tab-content').classList.toggle('hidden', tab !== 'create'); document.getElementById('history-tab-content').classList.toggle('hidden', tab !== 'history'); if (tab === 'history') renderHistory(); }
         
         function sendDraft() { if (draftTimeout) clearTimeout(draftTimeout); draftTimeout = setTimeout(() => { const draft = getCurrentDraft(); if (!draft) { broadcast({ type: 'draft_cancelled' }); return; } broadcast({ type: 'draft', draft }); }, 400); }
@@ -410,12 +478,14 @@
             const mode = document.getElementById('vote-mode').value; let options = []; let maxChoices = 1;
             if (mode === 'simple') options = ['Pour', 'Abstention', 'Contre'];
             else { maxChoices = parseInt(document.getElementById('max-choices').value) || 1; document.querySelectorAll('.option-input').forEach(inp => { if (inp.value.trim()) options.push(inp.value.trim()); }); if (options.length < 2) { showToast('Ajoutez au moins 2 options.'); return; } }
-            currentVote = { id: Date.now(), question, mode, options, maxChoices, votes: [], timestamp: new Date().toISOString(), expectedVoters: voters.size };
+            const numero = formatNumero(startNumero + history.length);
+            currentVote = { id: Date.now(), numero, question, mode, options, maxChoices, votes: [], timestamp: new Date().toISOString(), expectedVoters: voters.size };
             hasVoted.clear(); voteActive = true; waitingForVotes = true;
             broadcast({ type: 'new_vote', vote: { question, mode, options, maxChoices } });
             document.getElementById('create-section').classList.add('hidden'); document.getElementById('vote-section').classList.remove('hidden'); document.getElementById('results-section').classList.add('hidden');
             document.getElementById('current-question-display').textContent = question; document.getElementById('votes-received').textContent = '0'; document.getElementById('remaining-voters').textContent = voters.size;
-            showToast('Vote lancé !');
+            document.getElementById('vote-numero-badge').textContent = `n°${numero}`;
+            showToast(`Vote n°${numero} lancé !`);
         }
         function broadcast(message) { connections.forEach(conn => { if (conn.open) { try { conn.send(message); } catch(e) { console.warn('Broadcast error:', e); } } }); }
         function updateVoteProgress() { document.getElementById('votes-received').textContent = hasVoted.size; document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
@@ -493,7 +563,7 @@
             }
 
             return {
-                numero: displayCode,
+                numero: currentVote.numero,   // ← numéro du scrutin, plus le code de session
                 date: new Date().toISOString().slice(0, 10),
                 titre: currentVote.question,
                 pour: counts.pour,
@@ -509,6 +579,7 @@
             const results = calculateResults();
             const entry = {
                 voteId: currentVote.id,
+                numero: currentVote.numero,
                 question: currentVote.question,
                 mode: currentVote.mode,
                 timestamp: currentVote.timestamp,
@@ -523,6 +594,7 @@
             try { localStorage.setItem('vote_history_' + sessionId, JSON.stringify(history)); } catch(e) {}
             displayResults(entry);
             broadcast({ type: 'results', results });
+            updateNextNumeroDisplay();
         }
         
         function buildHemicycleUrl(hemicycleData) {
@@ -535,6 +607,7 @@
             document.getElementById('vote-section').classList.add('hidden');
             document.getElementById('results-section').classList.remove('hidden');
             document.getElementById('result-question').textContent = entry.question;
+            document.getElementById('result-numero-badge').textContent = `n°${entry.numero || getVoteNumero(entry)}`;
 
             const hemiWrap = document.getElementById('hemicycle-wrap');
             const elecWrap = document.getElementById('election-results');
@@ -575,6 +648,7 @@
             toggleVoteMode();
             currentVote = null; hasVoted.clear();
             broadcast({ type: 'reset' }); broadcast({ type: 'draft_cancelled' });
+            updateNextNumeroDisplay();
         }
         
         function renderHistory() {
@@ -586,6 +660,7 @@
             history.forEach((entry) => {
                 const div = document.createElement('div');
                 div.className = 'history-item';
+                const numero = entry.numero || getVoteNumero(entry);
                 let resume = '';
                 if (entry.mode === 'simple' && entry.hemicycleData) {
                     const hd = entry.hemicycleData;
@@ -598,7 +673,7 @@
                     const elus = r.winners.map(w => escapeHtml(w.name)).join(', ') || 'Aucun';
                     resume = `${r.totalExpressed} suffrages exprimés — <strong>Élu(s) : ${elus}</strong>`;
                 }
-                div.innerHTML = `<div class="flex-between"><strong>${escapeHtml(entry.question)}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">${resume}</div>`;
+                div.innerHTML = `<div class="flex-between"><strong>n°${numero} — ${escapeHtml(entry.question)}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">${resume}</div>`;
                 div.onclick = () => toggleHistoryDetail(div, entry);
                 list.appendChild(div);
             });
@@ -635,7 +710,10 @@
             sessionClosed = true;
             if (history.length > 0) exportPDF();
             broadcast({ type: 'close' });
-            try { localStorage.removeItem('vote_history_' + sessionId); } catch(e) {}
+            try {
+                localStorage.removeItem('vote_history_' + sessionId);
+                localStorage.removeItem('vote_start_numero_' + sessionId);
+            } catch(e) {}
             history = [];
             connections.forEach(conn => { if (conn.open) conn.close(); });
             connections = []; voters.clear();
@@ -644,139 +722,351 @@
             document.getElementById('admin-section').classList.add('hidden');
             document.getElementById('closed-section').classList.remove('hidden');
         }
-        
-        /**
-         * PDF en 2 parties :
-         * 1) Sommaire (infos générales + table des votes)
-         * 2) Détail par vote (1 page par vote) — rendu identique à export.js
-         *    pour les oui/non (capture #pageContent de hemicycle.html),
-         *    ancien format texte pour les élections.
-         */
+
+        // =====================================================================
+        // ============ HELPERS PDF (style Assemblée nationale) ================
+        // =====================================================================
+        function pdfSetFill(doc, color) { doc.setFillColor(color[0], color[1], color[2]); }
+        function pdfSetText(doc, color) { doc.setTextColor(color[0], color[1], color[2]); }
+        function pdfSetDraw(doc, color) { doc.setDrawColor(color[0], color[1], color[2]); }
+
+        function pdfTricolore(doc, x, y, w, h) {
+            const third = w / 3;
+            pdfSetFill(doc, [0, 0, 255]); doc.rect(x, y, third, h, 'F');
+            pdfSetFill(doc, [255, 255, 255]); doc.rect(x + third, y, third, h, 'F');
+            pdfSetFill(doc, [255, 0, 0]); doc.rect(x + 2 * third, y, third, h, 'F');
+            pdfSetDraw(doc, [200, 200, 200]); doc.rect(x, y, w, h, 'S');
+        }
+
+        function pdfBadge(doc, text, x, y, w, h, bg, fg) {
+            pdfSetFill(doc, bg);
+            doc.roundedRect(x, y, w, h, 1.5, 1.5, 'F');
+            pdfSetText(doc, fg);
+            doc.setFontSize(8);
+            doc.setFont(undefined, 'bold');
+            doc.text(text, x + w / 2, y + h / 2 + 1.2, { align: 'center' });
+        }
+
+        function pdfBar(doc, x, y, w, h, pct, bg, fg) {
+            pdfSetFill(doc, bg);
+            doc.roundedRect(x, y, w, h, h / 2, h / 2, 'F');
+            const fillW = Math.max(0, Math.min(1, pct / 100)) * w;
+            if (fillW > 0.2) {
+                pdfSetFill(doc, fg);
+                doc.roundedRect(x, y, fillW, h, h / 2, h / 2, 'F');
+            }
+        }
+
+        function pdfHeader(doc, pageW) {
+            // Bandeau bleu en haut
+            pdfSetFill(doc, PDF_COLORS.an);
+            doc.rect(0, 0, pageW, 12, 'F');
+            pdfTricolore(doc, pageW - 24, 3, 18, 6);
+            pdfSetText(doc, PDF_COLORS.white);
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'bold');
+            doc.text('ASSEMBLÉE NATIONALE — RAPPORT DE SCRUTINS', 10, 8);
+            pdfSetText(doc, PDF_COLORS.text);
+        }
+
+        function pdfFooter(doc, pageW, pageH, pageNum) {
+            pdfSetDraw(doc, PDF_COLORS.border);
+            doc.setLineWidth(0.2);
+            doc.line(10, pageH - 12, pageW - 10, pageH - 12);
+            pdfSetText(doc, PDF_COLORS.textLight);
+            doc.setFontSize(8);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Session ${displayCode} — Rapport généré le ${new Date().toLocaleString()}`, 10, pageH - 7);
+            doc.text(`Page ${pageNum}`, pageW - 10, pageH - 7, { align: 'right' });
+            pdfSetText(doc, PDF_COLORS.text);
+        }
+
+        // =====================================================================
+        // ========================== EXPORT PDF ===============================
+        // =====================================================================
         async function exportPDF() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('p', 'mm', 'a4');
             const pageW = doc.internal.pageSize.getWidth();
             const pageH = doc.internal.pageSize.getHeight();
+            let pageNum = 1;
 
-            // ====== PARTIE 1 : SOMMAIRE ======
-            doc.setFontSize(20);
+            // ========== PAGE DE GARDE / SOMMAIRE ==========
+            pdfHeader(doc, pageW);
+
+            // Titre
+            doc.setFontSize(24);
             doc.setFont(undefined, 'bold');
-            doc.text('Rapport de session', pageW / 2, 25, { align: 'center' });
+            pdfSetText(doc, PDF_COLORS.an);
+            doc.text('Rapport de session', pageW / 2, 32, { align: 'center' });
+
+            pdfSetDraw(doc, PDF_COLORS.an);
+            doc.setLineWidth(0.6);
+            doc.line(pageW / 2 - 30, 36, pageW / 2 + 30, 36);
+
+            // Bloc infos générales
+            const infoY = 46;
+            pdfSetFill(doc, PDF_COLORS.anLight);
+            doc.roundedRect(14, infoY, pageW - 28, 34, 3, 3, 'F');
 
             doc.setFontSize(11);
-            doc.setFont(undefined, 'normal');
-            let y = 45;
-            doc.text(`Code de session : ${displayCode}`, 14, y); y += 7;
-            doc.text(`Date de la session : ${sessionStartTime.toLocaleString()}`, 14, y); y += 7;
-            doc.text(`Nombre de votes : ${history.length}`, 14, y); y += 12;
-
-            doc.setFontSize(14);
             doc.setFont(undefined, 'bold');
-            doc.text('Sommaire des votes', 14, y); y += 8;
+            pdfSetText(doc, PDF_COLORS.an);
+            doc.text('Informations générales', 20, infoY + 8);
+
             doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
+            pdfSetText(doc, PDF_COLORS.text);
+            doc.text(`Code de session : ${displayCode}`, 20, infoY + 16);
+            doc.text(`Date de la session : ${sessionStartTime.toLocaleString()}`, 20, infoY + 23);
+            doc.text(`Nombre de scrutins : ${history.length}`, 20, infoY + 30);
+
+            const firstNum = history.length > 0 ? (history[0].numero || getVoteNumero(history[0])) : formatNumero(startNumero);
+            const lastNum = history.length > 0 ? (history[history.length - 1].numero || getVoteNumero(history[history.length - 1])) : formatNumero(startNumero);
+            doc.text(`Numéros : n°${firstNum} → n°${lastNum}`, pageW - 20, infoY + 16, { align: 'right' });
+            doc.text(`Premier scrutin : n°${formatNumero(startNumero)}`, pageW - 20, infoY + 23, { align: 'right' });
+
+            // Sommaire
+            let y = infoY + 46;
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            pdfSetText(doc, PDF_COLORS.an);
+            doc.text('Sommaire des scrutins', 14, y);
+            y += 3;
+            pdfSetDraw(doc, PDF_COLORS.border);
+            doc.setLineWidth(0.3);
+            doc.line(14, y, pageW - 14, y);
+            y += 7;
+
+            // En-têtes du tableau
+            pdfSetFill(doc, PDF_COLORS.an);
+            doc.rect(14, y - 5, pageW - 28, 7, 'F');
+            pdfSetText(doc, PDF_COLORS.white);
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'bold');
+            doc.text('N°', 18, y);
+            doc.text('Question', 30, y);
+            doc.text('Résultat', pageW - 20, y, { align: 'right' });
+            y += 8;
+
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'normal');
+            pdfSetText(doc, PDF_COLORS.text);
 
             history.forEach((entry, index) => {
-                if (y > pageH - 30) { doc.addPage(); y = 20; }
+                if (y > pageH - 30) {
+                    pdfFooter(doc, pageW, pageH, pageNum); pageNum++;
+                    doc.addPage();
+                    pdfHeader(doc, pageW);
+                    y = 22;
+                    // Ré-afficher les en-têtes du tableau
+                    pdfSetFill(doc, PDF_COLORS.an);
+                    doc.rect(14, y - 5, pageW - 28, 7, 'F');
+                    pdfSetText(doc, PDF_COLORS.white);
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'bold');
+                    doc.text('N°', 18, y);
+                    doc.text('Question', 30, y);
+                    doc.text('Résultat', pageW - 20, y, { align: 'right' });
+                    y += 8;
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'normal');
+                    pdfSetText(doc, PDF_COLORS.text);
+                }
+
+                const numero = entry.numero || getVoteNumero(entry);
+                const rowH = 11;
+                // fond alterné
+                if (index % 2 === 0) {
+                    pdfSetFill(doc, [248, 250, 252]);
+                    doc.rect(14, y - 4.5, pageW - 28, rowH, 'F');
+                }
+
+                // Numéro
                 doc.setFont(undefined, 'bold');
-                const qLines = doc.splitTextToSize(`Vote ${index + 1} : ${entry.question}`, pageW - 28);
-                doc.text(qLines, 14, y);
-                y += qLines.length * 5 + 1;
+                pdfSetText(doc, PDF_COLORS.an);
+                doc.text(numero, 18, y);
+
+                // Question (tronquée sur 2 lignes max)
+                pdfSetText(doc, PDF_COLORS.text);
                 doc.setFont(undefined, 'normal');
-                let resultLine = '';
+                const qLines = doc.splitTextToSize(entry.question, pageW - 28 - 30 - 40);
+                const qShow = qLines.slice(0, 2);
+                doc.text(qShow, 30, y);
+                if (qLines.length > 2) doc.text('…', 30, y + 10);
+
+                // Badge résultat
+                let badgeText = '', badgeBg = PDF_COLORS.textLight, badgeFg = PDF_COLORS.white;
                 if (entry.mode === 'simple' && entry.hemicycleData) {
                     const hd = entry.hemicycleData;
                     const exprimes = hd.pour + hd.contre;
                     const majorite = Math.floor(exprimes / 2) + 1;
-                    const res = hd.pour > majorite ? 'ADOPTÉ' : 'REJETÉ';
-                    resultLine = `Résultat : ${res} — Pour : ${hd.pour}, Contre : ${hd.contre}, Abstention : ${hd.abstention}`;
+                    if (hd.pour > majorite) { badgeText = 'ADOPTÉ'; badgeBg = PDF_COLORS.success; }
+                    else { badgeText = 'REJETÉ'; badgeBg = PDF_COLORS.danger; }
                 } else if (entry.results) {
-                    const r = entry.results;
-                    const elus = r.winners.map(w => w.name).join(', ') || 'Aucun';
-                    resultLine = `Élection — Élu(s) : ${elus}`;
+                    const elus = entry.results.winners.length;
+                    badgeText = elus > 0 ? `ÉLU${elus > 1 ? 'S' : ''} (${elus})` : 'AUCUN ÉLU';
+                    badgeBg = elus > 0 ? PDF_COLORS.success : PDF_COLORS.textLight;
                 }
-                const rLines = doc.splitTextToSize(resultLine, pageW - 28);
-                doc.text(rLines, 14, y);
-                y += rLines.length * 5 + 4;
+                pdfBadge(doc, badgeText, pageW - 20 - 24, y - 3.5, 24, 6, badgeBg, badgeFg);
+
+                y += rowH + 2;
             });
 
-            // ====== PARTIE 2 : DÉTAIL (1 PAGE PAR VOTE) ======
+            pdfFooter(doc, pageW, pageH, pageNum);
+            pageNum++;
+
+            // ========== DÉTAIL PAR VOTE (1 PAGE / VOTE) ==========
             for (let i = 0; i < history.length; i++) {
                 const entry = history[i];
+                const numero = entry.numero || getVoteNumero(entry);
+
                 doc.addPage();
+                pdfHeader(doc, pageW);
 
                 if (entry.mode === 'simple' && entry.hemicycleData) {
+                    // ----- OUI/NON : capture hémicycle -----
+                    doc.setFontSize(16);
+                    doc.setFont(undefined, 'bold');
+                    pdfSetText(doc, PDF_COLORS.an);
+                    doc.text(`Scrutin n°${numero}`, 14, 22);
+
+                    doc.setFontSize(11);
+                    doc.setFont(undefined, 'normal');
+                    pdfSetText(doc, PDF_COLORS.text);
+                    const qLines = doc.splitTextToSize(entry.question, pageW - 28);
+                    doc.text(qLines, 14, 30);
+                    let headerH = qLines.length * 5 + 3;
+
+                    // Synthèse compacte sous le titre
+                    const hd = entry.hemicycleData;
+                    const exprimes = hd.pour + hd.contre;
+                    const majorite = Math.floor(exprimes / 2) + 1;
+                    const adopted = hd.pour > majorite;
+
+                    const synY = 30 + headerH;
+                    pdfSetFill(doc, PDF_COLORS.anLight);
+                    doc.roundedRect(14, synY, pageW - 28, 16, 2, 2, 'F');
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'bold');
+                    pdfSetText(doc, PDF_COLORS.an);
+                    doc.text(`Pour : ${hd.pour}`, 20, synY + 6);
+                    doc.text(`Contre : ${hd.contre}`, 60, synY + 6);
+                    doc.text(`Abstention : ${hd.abstention}`, 100, synY + 6);
+                    doc.text(`Suffrages exprimés : ${exprimes}`, 20, synY + 12);
+                    doc.text(`Majorité absolue : ${majorite}`, 100, synY + 12);
+
+                    pdfBadge(doc, adopted ? 'ADOPTÉ' : 'REJETÉ', pageW - 44, synY + 4, 30, 8,
+                        adopted ? PDF_COLORS.success : PDF_COLORS.danger, PDF_COLORS.white);
+
+                    let imgY = synY + 22;
                     try {
                         const captured = await captureHemicyclePage(entry.hemicycleData);
                         if (!captured) throw new Error('capture vide');
 
-                        const imgWidth = captured.width;
-                        const imgHeight = captured.height;
-                        const margin = 10;
-                        const maxW = pageW - (margin * 2);
-                        const maxH = pageH - (margin * 2);
-                        const ratio = Math.min(maxW / imgWidth, maxH / imgHeight);
-                        const newImgWidth = imgWidth * ratio;
-                        const newImgHeight = imgHeight * ratio;
-                        const x = (pageW - newImgWidth) / 2;
-                        const yImg = (pageH - newImgHeight) / 2;
-
-                        doc.addImage(captured.dataUrl, 'JPEG', x, yImg, newImgWidth, newImgHeight);
+                        const imgW = pageW - 28;
+                        const availableH = pageH - imgY - 16;
+                        const ratio = Math.min(imgW / captured.width, availableH / captured.height);
+                        const w = captured.width * ratio;
+                        const h = captured.height * ratio;
+                        const x = (pageW - w) / 2;
+                        doc.addImage(captured.dataUrl, 'JPEG', x, imgY, w, h);
                     } catch (e) {
                         console.warn('Capture hémicycle échec, fallback texte:', e);
-                        y = 20;
-                        doc.setFontSize(15);
-                        doc.setFont(undefined, 'bold');
-                        const titleLines = doc.splitTextToSize(`Vote ${i + 1} : ${entry.question}`, pageW - 28);
-                        doc.text(titleLines, 14, y);
-                        y += titleLines.length * 6 + 6;
-                        doc.setFont(undefined, 'normal');
                         doc.setFontSize(11);
-                        const hd = entry.hemicycleData;
-                        const exprimes = hd.pour + hd.contre;
-                        const majorite = Math.floor(exprimes / 2) + 1;
-                        doc.text(`Suffrages exprimés : ${exprimes} | Majorité absolue : ${majorite}`, 14, y); y += 7;
-                        doc.text(`Pour : ${hd.pour}`, 14, y); y += 6;
-                        doc.text(`Contre : ${hd.contre}`, 14, y); y += 6;
-                        doc.text(`Abstention : ${hd.abstention}`, 14, y); y += 6;
-                        doc.setFont(undefined, 'bold');
-                        doc.text(`Résultat : ${hd.pour > majorite ? 'ADOPTÉ' : 'REJETÉ'}`, 14, y);
+                        doc.setFont(undefined, 'normal');
+                        pdfSetText(doc, PDF_COLORS.text);
+                        let yy = imgY + 10;
+                        doc.text(`Suffrages exprimés : ${exprimes}`, 20, yy); yy += 8;
+                        doc.text(`Pour : ${hd.pour}`, 20, yy); yy += 8;
+                        doc.text(`Contre : ${hd.contre}`, 20, yy); yy += 8;
+                        doc.text(`Abstention : ${hd.abstention}`, 20, yy); yy += 8;
                     }
                 } else if (entry.results) {
-                    y = 20;
-                    doc.setFontSize(15);
-                    doc.setFont(undefined, 'bold');
-                    const titleLines = doc.splitTextToSize(`Vote ${i + 1} : ${entry.question}`, pageW - 28);
-                    doc.text(titleLines, 14, y);
-                    y += titleLines.length * 6 + 6;
-                    doc.setFont(undefined, 'normal');
-
+                    // ----- ÉLECTION : mise en page soignée -----
                     const r = entry.results;
-                    doc.setFontSize(11);
-                    doc.text(`Mode : Élection (${entry.mode === 'multiple' ? 'choix multiples' : 'simple'})`, 14, y); y += 7;
-                    doc.text(`Suffrages exprimés : ${r.totalExpressed}`, 14, y); y += 6;
-                    doc.text(`Majorité absolue : ${r.absoluteMajority}`, 14, y); y += 6;
-                    doc.text(`Votants : ${r.totalVoters}`, 14, y); y += 10;
+
+                    doc.setFontSize(16);
                     doc.setFont(undefined, 'bold');
-                    doc.text('Détail par proposition :', 14, y); y += 7;
+                    pdfSetText(doc, PDF_COLORS.an);
+                    doc.text(`Scrutin n°${numero}`, 14, 22);
+
+                    doc.setFontSize(11);
                     doc.setFont(undefined, 'normal');
+                    pdfSetText(doc, PDF_COLORS.text);
+                    const qLines = doc.splitTextToSize(entry.question, pageW - 28);
+                    doc.text(qLines, 14, 30);
+                    let y2 = 30 + qLines.length * 5 + 6;
+
+                    // Bloc stats
+                    pdfSetFill(doc, PDF_COLORS.anLight);
+                    doc.roundedRect(14, y2, pageW - 28, 18, 2, 2, 'F');
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'bold');
+                    pdfSetText(doc, PDF_COLORS.an);
+                    doc.text('Suffrages exprimés', 20, y2 + 7);
+                    doc.text('Majorité absolue', pageW / 2 - 10, y2 + 7);
+                    doc.text('Votants', pageW - 50, y2 + 7);
+                    doc.setFontSize(13);
+                    pdfSetText(doc, PDF_COLORS.text);
+                    doc.text(String(r.totalExpressed), 20, y2 + 14);
+                    doc.text(String(r.absoluteMajority), pageW / 2 - 10, y2 + 14);
+                    doc.text(String(r.totalVoters), pageW - 50, y2 + 14);
+
+                    y2 += 26;
+
+                    // Titre section résultats
+                    doc.setFontSize(12);
+                    doc.setFont(undefined, 'bold');
+                    pdfSetText(doc, PDF_COLORS.an);
+                    doc.text('Résultats par proposition', 14, y2);
+                    y2 += 3;
+                    pdfSetDraw(doc, PDF_COLORS.border);
+                    doc.setLineWidth(0.3);
+                    doc.line(14, y2, pageW - 14, y2);
+                    y2 += 7;
+
+                    // Barres par proposition
                     r.sorted.forEach(item => {
-                        if (y > pageH - 20) { doc.addPage(); y = 20; }
+                        if (y2 > pageH - 30) {
+                            pdfFooter(doc, pageW, pageH, pageNum); pageNum++;
+                            doc.addPage();
+                            pdfHeader(doc, pageW);
+                            y2 = 22;
+                        }
                         const isWinner = r.winners.some(w => w.name === item.name);
-                        const line = `  - ${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%)${isWinner ? ' [ÉLU]' : ''}`;
-                        doc.text(line, 14, y); y += 6;
+
+                        // ligne : nom + voix + %
+                        doc.setFontSize(10);
+                        doc.setFont(undefined, isWinner ? 'bold' : 'normal');
+                        pdfSetText(doc, isWinner ? PDF_COLORS.an : PDF_COLORS.text);
+                        doc.text(escapeHtml(item.name), 16, y2);
+
+                        doc.setFont(undefined, 'normal');
+                        pdfSetText(doc, PDF_COLORS.textLight);
+                        doc.setFontSize(9);
+                        doc.text(`${item.count} voix — ${item.percentage.toFixed(1)}%`, pageW - 16, y2, { align: 'right' });
+
+                        if (isWinner) {
+                            pdfBadge(doc, 'ÉLU', pageW - 40, y2 + 2, 12, 5, PDF_COLORS.success, PDF_COLORS.white);
+                        }
+
+                        y2 += 3;
+                        // barre
+                        pdfBar(doc, 16, y2, pageW - 32, 4, item.percentage,
+                            PDF_COLORS.border,
+                            isWinner ? PDF_COLORS.success : PDF_COLORS.pour);
+                        y2 += 10;
                     });
                 }
+
+                pdfFooter(doc, pageW, pageH, pageNum);
+                pageNum++;
             }
 
             doc.save(`rapport_session_${displayCode}_${sessionStartTime.toISOString().slice(0, 10)}.pdf`);
         }
 
-        /**
-         * Charge hemicycle.html?data=... dans une iframe cachée, attend le rendu,
-         * puis capture #pageContent avec EXACTEMENT les options de export.js.
-         * Retourne { dataUrl, width, height } (dimensions du canvas en px).
-         */
         function captureHemicyclePage(hemicycleData) {
             const url = buildHemicycleUrl(hemicycleData);
             return new Promise((resolve) => {
