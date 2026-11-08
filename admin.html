@@ -7,6 +7,7 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="config.js"></script>
     <style>
         :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --text-light: #64748b; --border: #e2e8f0; --success: #10b981; --danger: #ef4444; --warning: #f59e0b; }
@@ -49,6 +50,11 @@
         .vote-option { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
         .vote-option input[type="text"] { margin-bottom: 0; flex: 1; }
         .vote-option button { width: auto; padding: 0.5rem; background: var(--danger); }
+        .result-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border); }
+        .result-item:last-child { border-bottom: none; }
+        .result-item.winner { background: #ecfdf5; border-left: 4px solid var(--success); border-radius: 8px; }
+        .result-bar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 0.25rem; overflow: hidden; }
+        .result-bar-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s; }
         .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
         .badge.success { background: #d1fae5; color: #065f46; }
         .badge.warning { background: #fef3c7; color: #92400e; }
@@ -56,6 +62,8 @@
         .stat { text-align: center; padding: 0.75rem; background: var(--bg); border-radius: 8px; }
         .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
         .stat-label { font-size: 0.8rem; color: var(--text-light); }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+        @media (max-width: 500px) { .grid-3 { grid-template-columns: 1fr; } }
         .history-item { padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer; }
         .history-item:hover { background: var(--bg); }
         .history-detail { padding: 0.75rem; background: var(--bg); border-radius: 8px; margin-top: 0.5rem; }
@@ -65,9 +73,8 @@
         .toast.show { opacity: 1; }
         .server-status { font-size: 0.75rem; color: var(--text-light); text-align: center; margin-top: 0.5rem; }
 
-        /* ===== INTÉGRATION HÉMICYCLE (sans couture) ===== */
         .hemicycle-wrap {
-            margin: 1.5rem -1.5rem -1.5rem -1.5rem; /* déborde des paddings de la card */
+            margin: 1.5rem -1.5rem -1.5rem -1.5rem;
             border-top: 1px solid var(--border);
             border-radius: 0 0 12px 12px;
             overflow: hidden;
@@ -90,9 +97,11 @@
             height: 70vh;
             min-height: 500px;
         }
-        /* Cache le header résiduel de la card résultats pour une intégration parfaite */
         #results-section { padding-bottom: 0; }
         #results-section .results-header { padding-bottom: 1rem; }
+
+        /* Ancien système (élections) */
+        #election-results { padding-bottom: 1.5rem; }
     </style>
 </head>
 <body>
@@ -157,8 +166,18 @@
                         <h2>Résultats</h2>
                         <p id="result-question" style="font-weight: 600;"></p>
                     </div>
+                    <!-- Oui/Non : hémicycle -->
                     <div class="hemicycle-wrap" id="hemicycle-wrap">
                         <iframe id="hemicycle-frame" class="hemicycle-frame" src="" frameborder="0"></iframe>
+                    </div>
+                    <!-- Élection : ancien système -->
+                    <div id="election-results" class="hidden">
+                        <div class="grid-3" style="margin-bottom: 1rem;">
+                            <div class="stat"><div class="stat-value" id="total-votes">0</div><div class="stat-label">Suffrages exprimés</div></div>
+                            <div class="stat"><div class="stat-value" id="absolute-majority">0</div><div class="stat-label">Majorité absolue</div></div>
+                            <div class="stat"><div class="stat-value" id="total-voters">0</div><div class="stat-label">Votants</div></div>
+                        </div>
+                        <div id="results-list"></div>
                     </div>
                     <button class="success" onclick="newVote()" style="margin-top: 1.5rem;">Créer un nouveau vote</button>
                 </div>
@@ -378,7 +397,13 @@
                 else { conn.send({ type: 'state', state: 'waiting' }); const draft = getCurrentDraft(); if (draft) conn.send({ type: 'draft', draft }); }
                 return;
             }
-            if (data.type === 'vote') { if (!voteActive || hasVoted.has(conn.peer)) return; hasVoted.add(conn.peer); currentVote.votes.push({ connId: conn.peer, answers: data.answers }); updateVoteProgress(); if (hasVoted.size >= voters.size && voters.size > 0) finishVote(); }
+            if (data.type === 'vote') {
+                if (!voteActive || hasVoted.has(conn.peer)) return;
+                hasVoted.add(conn.peer);
+                currentVote.votes.push({ connId: conn.peer, answers: data.answers });
+                updateVoteProgress();
+                if (hasVoted.size >= voters.size && voters.size > 0) finishVote();
+            }
         }
         function updateConnectedCount() { document.getElementById('connected-count').textContent = voters.size; if (voteActive && waitingForVotes) document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
         function toggleVoteMode() { const mode = document.getElementById('vote-mode').value; document.getElementById('simple-options').classList.toggle('hidden', mode !== 'simple'); document.getElementById('multiple-options').classList.toggle('hidden', mode !== 'multiple'); }
@@ -389,7 +414,7 @@
             const mode = document.getElementById('vote-mode').value; let options = []; let maxChoices = 1;
             if (mode === 'simple') options = ['Pour', 'Abstention', 'Contre'];
             else { maxChoices = parseInt(document.getElementById('max-choices').value) || 1; document.querySelectorAll('.option-input').forEach(inp => { if (inp.value.trim()) options.push(inp.value.trim()); }); if (options.length < 2) { showToast('Ajoutez au moins 2 options.'); return; } }
-            currentVote = { id: Date.now(), question, mode, options, maxChoices, votes: [], timestamp: new Date().toISOString() };
+            currentVote = { id: Date.now(), question, mode, options, maxChoices, votes: [], timestamp: new Date().toISOString(), expectedVoters: voters.size };
             hasVoted.clear(); voteActive = true; waitingForVotes = true;
             broadcast({ type: 'new_vote', vote: { question, mode, options, maxChoices } });
             document.getElementById('create-section').classList.add('hidden'); document.getElementById('vote-section').classList.remove('hidden'); document.getElementById('results-section').classList.add('hidden');
@@ -401,64 +426,123 @@
         function skipWaiting() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
         function showResults() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
         
-        function finishVote() {
-            if (!voteActive) return; voteActive = false; waitingForVotes = false;
-            const results = calculateResults();
-            const hemicycleData = buildHemicycleData(results);
-            // Historique : on stocke uniquement le JSON hémicycle (nouveau système)
-            history.push({
-                voteId: currentVote.id,
-                question: currentVote.question,
-                timestamp: currentVote.timestamp,
-                endedAt: new Date().toISOString(),
-                hemicycleData
-            });
-            try { localStorage.setItem('vote_history_' + sessionId, JSON.stringify(history)); } catch(e) {}
-            displayResults(hemicycleData); broadcast({ type: 'results', results });
-        }
+        /**
+         * Calcule les résultats à partir des votes bruts.
+         * IMPORTANT : pour un oui/non, "pour"/"contre"/"abstention" sont comptés
+         * séparément, et les suffrages exprimés = pour + contre (abstentions exclues
+         * de la majorité, conformément au règlement).
+         */
         function calculateResults() {
-            const totalVoters = hasVoted.size, votes = currentVote.votes, options = currentVote.options, mode = currentVote.mode;
-            const counts = {}; options.forEach(opt => counts[opt] = 0); let totalExpressed = 0;
-            votes.forEach(vote => { if (mode === 'simple') { const idx = vote.answers[0]; if (idx !== undefined && options[idx]) counts[options[idx]]++; totalExpressed++; } else { if (vote.answers.length === 0) totalExpressed++; else vote.answers.forEach(idx => { if (options[idx]) { counts[options[idx]]++; totalExpressed++; } }); } });
+            const options = currentVote.options;
+            const mode = currentVote.mode;
+            const counts = {}; options.forEach(opt => counts[opt] = 0);
+            let totalExpressed = 0;
+            let totalVoters = hasVoted.size;
+            currentVote.votes.forEach(vote => {
+                if (mode === 'simple') {
+                    const idx = vote.answers[0];
+                    if (idx !== undefined && options[idx]) {
+                        counts[options[idx]]++;
+                        // Suffrages exprimés = pour + contre uniquement
+                        if (options[idx] === 'Pour' || options[idx] === 'Contre') totalExpressed++;
+                    }
+                } else {
+                    if (vote.answers.length === 0) { /* abstention */ }
+                    else vote.answers.forEach(idx => { if (options[idx]) { counts[options[idx]]++; totalExpressed++; } });
+                }
+            });
             const absoluteMajority = Math.floor(totalExpressed / 2) + 1;
             const sorted = Object.entries(counts).map(([name, count]) => ({ name, count, percentage: totalExpressed > 0 ? (count / totalExpressed) * 100 : 0 })).sort((a, b) => b.count - a.count);
-            let winners = []; if (mode === 'multiple') winners = sorted.slice(0, currentVote.maxChoices).filter(w => w.count > 0); else if (sorted.length > 0 && sorted[0].count > 0) winners = [sorted[0]];
+            let winners = [];
+            if (mode === 'multiple') winners = sorted.slice(0, currentVote.maxChoices).filter(w => w.count > 0);
+            else {
+                const pour = counts['Pour'] || 0;
+                if (pour > absoluteMajority) winners = [{ name: 'Pour', count: pour, percentage: 0 }];
+                else winners = [{ name: 'Contre', count: counts['Contre'] || 0, percentage: 0 }];
+            }
             return { counts, sorted, totalExpressed, totalVoters, absoluteMajority, winners, mode, options };
         }
         
-        function buildHemicycleData(results) {
-            const p = results.counts['Pour'] || 0;
-            const c = results.counts['Contre'] || 0;
-            const a = results.counts['Abstention'] || 0;
+        /**
+         * Construit le JSON pour hemicycle.html.
+         * - Un siège par votant attendu (expectedVoters)
+         * - Dans l'ordre des votes reçus
+         * - Les votants qui n'ont pas voté -> "absent"
+         */
+        function buildHemicycleData() {
+            const counts = { pour: 0, contre: 0, abstention: 0 };
             const sieges = [];
             let seatIndex = 1;
+
+            // Votes reçus, dans l'ordre
             currentVote.votes.forEach(vote => {
-                if (currentVote.mode === 'simple') {
-                    const idx = vote.answers[0];
-                    if (idx !== undefined && currentVote.options[idx]) {
-                        const voteType = currentVote.options[idx].toLowerCase();
-                        if (voteType === 'pour' || voteType === 'contre' || voteType === 'abstention') {
-                            sieges.push({
-                                nom: `Siege ${seatIndex}`,
-                                genre: Math.random() < 0.5 ? 'M' : 'F',
-                                circo: 'circonscription',
-                                groupe: 'groupe politique',
-                                vote: voteType
-                            });
-                            seatIndex++;
-                        }
-                    }
+                const idx = vote.answers[0];
+                let voteType = 'absent';
+                if (idx !== undefined && currentVote.options[idx]) {
+                    const opt = currentVote.options[idx];
+                    if (opt === 'Pour') voteType = 'pour';
+                    else if (opt === 'Contre') voteType = 'contre';
+                    else if (opt === 'Abstention') voteType = 'abstention';
                 }
+                if (voteType === 'pour') counts.pour++;
+                else if (voteType === 'contre') counts.contre++;
+                else if (voteType === 'abstention') counts.abstention++;
+
+                sieges.push({
+                    nom: `Siege ${seatIndex}`,
+                    genre: Math.random() < 0.5 ? 'M' : 'F',
+                    circo: 'circonscription',
+                    groupe: 'groupe politique',
+                    vote: voteType
+                });
+                seatIndex++;
             });
+
+            // Compléter avec les votants attendus qui n'ont pas voté
+            const expected = currentVote.expectedVoters || voters.size;
+            while (sieges.length < expected) {
+                sieges.push({
+                    nom: `Siege ${seatIndex}`,
+                    genre: Math.random() < 0.5 ? 'M' : 'F',
+                    circo: 'circonscription',
+                    groupe: 'groupe politique',
+                    vote: 'absent'
+                });
+                seatIndex++;
+            }
+
             return {
                 numero: displayCode,
                 date: new Date().toISOString().slice(0, 10),
                 titre: currentVote.question,
-                pour: p,
-                contre: c,
-                abstention: a,
+                pour: counts.pour,
+                contre: counts.contre,
+                abstention: counts.abstention,
                 sieges
             };
+        }
+        
+        function finishVote() {
+            if (!voteActive) return;
+            voteActive = false; waitingForVotes = false;
+            const results = calculateResults();
+            const entry = {
+                voteId: currentVote.id,
+                question: currentVote.question,
+                mode: currentVote.mode,
+                timestamp: currentVote.timestamp,
+                endedAt: new Date().toISOString()
+            };
+            if (currentVote.mode === 'simple') {
+                entry.hemicycleData = buildHemicycleData();
+            } else {
+                // Élection : on garde l'ancien format
+                entry.results = results;
+            }
+            history.push(entry);
+            try { localStorage.setItem('vote_history_' + sessionId, JSON.stringify(history)); } catch(e) {}
+            displayResults(entry);
+            broadcast({ type: 'results', results });
         }
         
         function buildHemicycleUrl(hemicycleData) {
@@ -467,13 +551,39 @@
             return `${HEMICYCLE_BASE}?data=${encodeURIComponent(encoded)}`;
         }
         
-        function displayResults(hemicycleData) {
+        function displayResults(entry) {
             document.getElementById('vote-section').classList.add('hidden');
             document.getElementById('results-section').classList.remove('hidden');
-            document.getElementById('result-question').textContent = currentVote.question;
-            const frame = document.getElementById('hemicycle-frame');
-            document.getElementById('hemicycle-wrap').classList.remove('history-mode');
-            frame.src = buildHemicycleUrl(hemicycleData);
+            document.getElementById('result-question').textContent = entry.question;
+
+            const hemiWrap = document.getElementById('hemicycle-wrap');
+            const elecWrap = document.getElementById('election-results');
+
+            if (entry.mode === 'simple' && entry.hemicycleData) {
+                // Oui/Non -> hémicycle
+                hemiWrap.classList.remove('hidden');
+                elecWrap.classList.add('hidden');
+                document.getElementById('hemicycle-frame').src = buildHemicycleUrl(entry.hemicycleData);
+            } else {
+                // Élection -> ancien système
+                hemiWrap.classList.add('hidden');
+                elecWrap.classList.remove('hidden');
+                renderElectionResults(entry.results);
+            }
+        }
+        
+        function renderElectionResults(results) {
+            document.getElementById('total-votes').textContent = results.totalExpressed;
+            document.getElementById('absolute-majority').textContent = results.absoluteMajority;
+            document.getElementById('total-voters').textContent = results.totalVoters;
+            const list = document.getElementById('results-list'); list.innerHTML = '';
+            results.sorted.forEach(item => {
+                const isWinner = results.winners.some(w => w.name === item.name);
+                const div = document.createElement('div');
+                div.className = 'result-item' + (isWinner ? ' winner' : '');
+                div.innerHTML = `<div style="flex: 1;"><div class="flex-between"><span style="font-weight: ${isWinner ? '700' : '400'};">${escapeHtml(item.name)}</span><span>${item.count} voix (${item.percentage.toFixed(1)}%)</span></div><div class="result-bar"><div class="result-bar-fill" style="width: ${item.percentage}%; ${isWinner ? 'background: var(--success);' : ''}"></div></div></div>${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Élu</span>' : ''}`;
+                list.appendChild(div);
+            });
         }
         
         function newVote() {
@@ -498,8 +608,19 @@
             history.forEach((entry) => {
                 const div = document.createElement('div');
                 div.className = 'history-item';
-                const hd = entry.hemicycleData || {};
-                div.innerHTML = `<div class="flex-between"><strong>${escapeHtml(hd.titre || entry.question || 'Vote')}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">Pour : ${hd.pour || 0} · Contre : ${hd.contre || 0} · Abstention : ${hd.abstention || 0}</div>`;
+                let resume = '';
+                if (entry.mode === 'simple' && entry.hemicycleData) {
+                    const hd = entry.hemicycleData;
+                    const exprimes = hd.pour + hd.contre;
+                    const majorite = Math.floor(exprimes / 2) + 1;
+                    const res = hd.pour > majorite ? 'Adopté' : 'Rejeté';
+                    resume = `Pour : ${hd.pour} · Contre : ${hd.contre} · Abstention : ${hd.abstention} — <strong>${res}</strong>`;
+                } else if (entry.results) {
+                    const r = entry.results;
+                    const elus = r.winners.map(w => escapeHtml(w.name)).join(', ') || 'Aucun';
+                    resume = `${r.totalExpressed} suffrages exprimés — <strong>Élu(s) : ${elus}</strong>`;
+                }
+                div.innerHTML = `<div class="flex-between"><strong>${escapeHtml(entry.question)}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">${resume}</div>`;
                 div.onclick = () => toggleHistoryDetail(div, entry);
                 list.appendChild(div);
             });
@@ -508,15 +629,27 @@
         function toggleHistoryDetail(element, entry) {
             const existing = element.querySelector('.history-detail');
             if (existing) { existing.remove(); return; }
-            const hd = entry.hemicycleData;
-            if (!hd) { showToast('Données indisponibles pour ce vote.'); return; }
             const detail = document.createElement('div');
             detail.className = 'history-detail';
-            detail.innerHTML = `
-                <div class="hemicycle-wrap history-mode">
-                    <iframe class="hemicycle-frame" src="${buildHemicycleUrl(hd)}" frameborder="0"></iframe>
-                </div>
-            `;
+            if (entry.mode === 'simple' && entry.hemicycleData) {
+                detail.innerHTML = `<div class="hemicycle-wrap history-mode"><iframe class="hemicycle-frame" src="${buildHemicycleUrl(entry.hemicycleData)}" frameborder="0"></iframe></div>`;
+            } else if (entry.results) {
+                // Ancien système d'affichage pour les élections
+                const r = entry.results;
+                let html = `<div class="grid-3" style="margin-bottom: 1rem;">
+                    <div class="stat"><div class="stat-value">${r.totalExpressed}</div><div class="stat-label">Suffrages exprimés</div></div>
+                    <div class="stat"><div class="stat-value">${r.absoluteMajority}</div><div class="stat-label">Majorité absolue</div></div>
+                    <div class="stat"><div class="stat-value">${r.totalVoters}</div><div class="stat-label">Votants</div></div>
+                </div><div>`;
+                r.sorted.forEach(item => {
+                    const isWinner = r.winners.some(w => w.name === item.name);
+                    html += `<div class="result-item${isWinner ? ' winner' : ''}"><div style="flex: 1;"><div class="flex-between"><span style="font-weight: ${isWinner ? '700' : '400'};">${escapeHtml(item.name)}</span><span>${item.count} voix (${item.percentage.toFixed(1)}%)</span></div><div class="result-bar"><div class="result-bar-fill" style="width: ${item.percentage}%; ${isWinner ? 'background: var(--success);' : ''}"></div></div></div>${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Élu</span>' : ''}</div>`;
+                });
+                html += '</div>';
+                detail.innerHTML = html;
+            } else {
+                detail.innerHTML = '<p>Données indisponibles pour ce vote.</p>';
+            }
             element.appendChild(detail);
         }
         
@@ -535,38 +668,166 @@
             document.getElementById('closed-section').classList.remove('hidden');
         }
         
-        function exportPDF() {
+        /**
+         * PDF en 2 parties :
+         * 1) Sommaire (date, session, nb votes, liste questions + résultat)
+         * 2) Détail par vote (1 page par vote) : hémicycle si oui/non, ancien format si élection
+         */
+        async function exportPDF() {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            doc.setFontSize(18);
-            doc.text('Historique des votes', 14, 20);
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            const pageW = doc.internal.pageSize.getWidth();
+            const pageH = doc.internal.pageSize.getHeight();
+
+            // ====== PARTIE 1 : SOMMAIRE ======
+            doc.setFontSize(20);
+            doc.setFont(undefined, 'bold');
+            doc.text('Rapport de session', pageW / 2, 25, { align: 'center' });
+
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'normal');
+            let y = 45;
+            doc.text(`Code de session : ${displayCode}`, 14, y); y += 7;
+            doc.text(`Date de la session : ${sessionStartTime.toLocaleString()}`, 14, y); y += 7;
+            doc.text(`Nombre de votes : ${history.length}`, 14, y); y += 12;
+
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('Sommaire des votes', 14, y); y += 8;
             doc.setFontSize(10);
-            doc.text(`Session du ${sessionStartTime.toLocaleString()}`, 14, 28);
-            doc.text(`Code de session : ${displayCode}`, 14, 34);
-            let y = 52;
+            doc.setFont(undefined, 'normal');
+
             history.forEach((entry, index) => {
-                if (y > 250) { doc.addPage(); y = 20; }
-                const hd = entry.hemicycleData || {};
-                doc.setFontSize(12);
+                if (y > pageH - 30) { doc.addPage(); y = 20; }
+                // Question
                 doc.setFont(undefined, 'bold');
-                const q = doc.splitTextToSize(`Vote ${index + 1} : ${hd.titre || entry.question}`, 180);
-                doc.text(q, 14, y); y += q.length * 6 + 2;
-                doc.setFontSize(10);
+                const qLines = doc.splitTextToSize(`Vote ${index + 1} : ${entry.question}`, pageW - 28);
+                doc.text(qLines, 14, y);
+                y += qLines.length * 5 + 1;
                 doc.setFont(undefined, 'normal');
-                const exprimes = (hd.pour || 0) + (hd.contre || 0);
-                const majorite = Math.floor(exprimes / 2) + 1;
-                doc.text(`Suffrages exprimés : ${exprimes} | Majorité absolue : ${majorite} | Votants : ${(hd.pour||0)+(hd.contre||0)+(hd.abstention||0)}`, 14, y);
-                y += 7;
-                doc.text(`  - Pour : ${hd.pour || 0}`, 14, y); y += 5;
-                doc.text(`  - Contre : ${hd.contre || 0}`, 14, y); y += 5;
-                doc.text(`  - Abstention : ${hd.abstention || 0}`, 14, y); y += 5;
-                const resultat = (hd.pour || 0) > majorite ? "ADOPTÉ" : "REJETÉ";
-                doc.setFont(undefined, 'bold');
-                doc.text(`  Résultat : ${resultat}`, 14, y); y += 5;
-                doc.setFont(undefined, 'normal');
-                y += 5;
+                // Résultat
+                let resultLine = '';
+                if (entry.mode === 'simple' && entry.hemicycleData) {
+                    const hd = entry.hemicycleData;
+                    const exprimes = hd.pour + hd.contre;
+                    const majorite = Math.floor(exprimes / 2) + 1;
+                    const res = hd.pour > majorite ? 'ADOPTÉ' : 'REJETÉ';
+                    resultLine = `Résultat : ${res} — Pour : ${hd.pour}, Contre : ${hd.contre}, Abstention : ${hd.abstention}`;
+                } else if (entry.results) {
+                    const r = entry.results;
+                    const elus = r.winners.map(w => w.name).join(', ') || 'Aucun';
+                    resultLine = `Élection — Élu(s) : ${elus}`;
+                }
+                const rLines = doc.splitTextToSize(resultLine, pageW - 28);
+                doc.text(rLines, 14, y);
+                y += rLines.length * 5 + 4;
             });
-            doc.save(`historique_votes_${displayCode}_${sessionStartTime.toISOString().slice(0,10)}.pdf`);
+
+            // ====== PARTIE 2 : DÉTAIL ======
+            for (let i = 0; i < history.length; i++) {
+                const entry = history[i];
+                doc.addPage();
+                y = 20;
+
+                doc.setFontSize(15);
+                doc.setFont(undefined, 'bold');
+                const titleLines = doc.splitTextToSize(`Vote ${i + 1} : ${entry.question}`, pageW - 28);
+                doc.text(titleLines, 14, y);
+                y += titleLines.length * 6 + 6;
+                doc.setFont(undefined, 'normal');
+
+                if (entry.mode === 'simple' && entry.hemicycleData) {
+                    // Hémicycle : on l'affiche en grand
+                    try {
+                        const imgData = await renderHemicycleToImage(entry.hemicycleData);
+                        if (imgData) {
+                            const availableH = pageH - y - 20;
+                            const imgW = pageW - 28;
+                            const imgH = Math.min(availableH, imgW * 0.75);
+                            doc.addImage(imgData, 'PNG', 14, y, imgW, imgH);
+                        } else {
+                            throw new Error('capture null');
+                        }
+                    } catch (e) {
+                        // Fallback texte
+                        doc.setFontSize(11);
+                        const hd = entry.hemicycleData;
+                        const exprimes = hd.pour + hd.contre;
+                        const majorite = Math.floor(exprimes / 2) + 1;
+                        doc.text(`Suffrages exprimés : ${exprimes} | Majorité absolue : ${majorite}`, 14, y); y += 7;
+                        doc.text(`Pour : ${hd.pour}`, 14, y); y += 6;
+                        doc.text(`Contre : ${hd.contre}`, 14, y); y += 6;
+                        doc.text(`Abstention : ${hd.abstention}`, 14, y); y += 6;
+                        doc.setFont(undefined, 'bold');
+                        doc.text(`Résultat : ${hd.pour > majorite ? 'ADOPTÉ' : 'REJETÉ'}`, 14, y);
+                    }
+                } else if (entry.results) {
+                    // Ancien format détaillé pour les élections
+                    const r = entry.results;
+                    doc.setFontSize(11);
+                    doc.text(`Mode : Élection (${entry.mode === 'multiple' ? 'choix multiples' : 'simple'})`, 14, y); y += 7;
+                    doc.text(`Suffrages exprimés : ${r.totalExpressed}`, 14, y); y += 6;
+                    doc.text(`Majorité absolue : ${r.absoluteMajority}`, 14, y); y += 6;
+                    doc.text(`Votants : ${r.totalVoters}`, 14, y); y += 10;
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Détail par proposition :', 14, y); y += 7;
+                    doc.setFont(undefined, 'normal');
+                    r.sorted.forEach(item => {
+                        if (y > pageH - 20) { doc.addPage(); y = 20; }
+                        const isWinner = r.winners.some(w => w.name === item.name);
+                        const line = `  - ${item.name} : ${item.count} voix (${item.percentage.toFixed(1)}%)${isWinner ? ' [ÉLU]' : ''}`;
+                        doc.text(line, 14, y); y += 6;
+                    });
+                }
+            }
+
+            doc.save(`rapport_session_${displayCode}_${sessionStartTime.toISOString().slice(0, 10)}.pdf`);
+        }
+
+        /**
+         * Rend l'hémicycle en image pour le PDF.
+         * 1) Si l'iframe hémicycle est déjà visible et chargée -> html2canvas
+         * 2) Sinon, crée une iframe cachée temporaire et capture
+         */
+        async function renderHemicycleToImage(hemicycleData) {
+            const url = buildHemicycleUrl(hemicycleData);
+            return new Promise((resolve) => {
+                const iframe = document.createElement('iframe');
+                iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1000px;border:0;';
+                iframe.src = url;
+                document.body.appendChild(iframe);
+                const timeout = setTimeout(() => {
+                    try { iframe.remove(); } catch(e) {}
+                    resolve(null);
+                }, 6000);
+                iframe.onload = async () => {
+                    // Attendre un peu que le SVG se rende
+                    await new Promise(r => setTimeout(r, 1500));
+                    try {
+                        const doc = iframe.contentDocument || iframe.contentWindow.document;
+                        const target = doc.body;
+                        const canvas = await html2canvas(target, {
+                            backgroundColor: '#ffffff',
+                            scale: 2,
+                            useCORS: true,
+                            allowTaint: true,
+                            width: 900,
+                            height: 1000,
+                            windowWidth: 900,
+                            windowHeight: 1000
+                        });
+                        clearTimeout(timeout);
+                        const dataUrl = canvas.toDataURL('image/png');
+                        try { iframe.remove(); } catch(e) {}
+                        resolve(dataUrl);
+                    } catch (e) {
+                        console.warn('html2canvas échec:', e);
+                        clearTimeout(timeout);
+                        try { iframe.remove(); } catch(e) {}
+                        resolve(null);
+                    }
+                };
+            });
         }
         
         function copyLink() { const input = document.getElementById('session-link'); input.select(); document.execCommand('copy'); showToast('Lien copié !'); }
