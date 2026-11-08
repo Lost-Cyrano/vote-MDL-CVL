@@ -192,7 +192,7 @@
   let currentData = null;
   let currentSelected = null;
   let allSeats = [];
-  let seatRowsMap = []; // Stockera les indices des sièges pour chaque rang
+  let seatRowsMap = [];
   
   const tooltip = document.getElementById('tooltip');
   const wrapper = document.getElementById('hemicycleWrapper');
@@ -273,8 +273,6 @@
     const a = currentData.abstention || 0;
     const votants = p + c + a;
     const exprimes = p + c;
-    
-    // Affichage de la majorité absolue (pour information, basée sur les exprimés)
     const majorite = Math.floor(exprimes / 2) + 1;
 
     document.getElementById('txtVotants').textContent = votants;
@@ -287,8 +285,6 @@
     const txtResultat = document.getElementById('txtResultat');
     const pieResultat = document.getElementById('pieResultat');
     
-    // NOUVELLE RÈGLE SIMPLIFIÉE : On compare uniquement le nombre de Pour et de Contre.
-    // Si Pour > Contre, c'est adopté. Sinon (égalité ou moins), c'est rejeté.
     if (p > c) {
       txtResultat.textContent = "L'Assemblée a adopté"; txtResultat.className = "resultat adopte";
       pieResultat.textContent = "A"; pieResultat.className = "pie-chart-inner adopte";
@@ -299,22 +295,15 @@
     updatePieChart(p, c, a);
   }
 
-  /**
-   * Calcule le rang de chaque siège du SVG en fonction de sa distance au centre.
-   */
   function computeRows(seatPaths) {
     seatRowsMap = [];
-    
-    // Centre théorique de l'hémicycle (basé sur les coordonnées du SVG)
     const cx = 428 * 0.28; 
     const cy = 445 * 0.28;
 
-    // 1. Calculer la distance de chaque siège
     let seatsWithDist = seatPaths.map((pathD, index) => {
-      // Création temporaire pour getBBox
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("d", pathD);
-      document.body.appendChild(path); // Nécessaire pour getBBox
+      document.body.appendChild(path);
       const bbox = path.getBBox();
       path.remove();
 
@@ -324,31 +313,31 @@
       return { index, distance, x: seatX };
     });
 
-    // 2. Trier par distance pour identifier les rangs
     seatsWithDist.sort((a, b) => a.distance - b.distance);
 
     let currentIdx = 0;
     for (let r = 0; r < SIEGES_PAR_RANG.length; r++) {
       const count = SIEGES_PAR_RANG[r];
       const rowSeats = seatsWithDist.slice(currentIdx, currentIdx + count);
-      
-      // Trier les sièges de ce rang de gauche à droite (x croissant)
       rowSeats.sort((a, b) => a.x - b.x);
-      
       seatRowsMap.push(rowSeats.map(s => s.index));
       currentIdx += count;
     }
   }
 
   function showTooltip(seatEl, actor, seatIndex) {
-    const nameParts = actor.nom.split(' ');
+    // Utilise prenom + nom si disponibles
+    const prenom = actor.prenom || '';
+    const nom = actor.nom || '';
+    const fullName = (prenom + ' ' + nom).trim();
+    const nameParts = fullName.split(' ');
     const prenomInitial = nameParts[0] ? nameParts[0].charAt(0) : '';
     const nomInitial = nameParts.length > 1 ? nameParts[nameParts.length - 1].charAt(0) : '';
     document.getElementById('tooltipInitiales').textContent = (prenomInitial + nomInitial).toUpperCase();
     
-    const civilite = actor.genre === 'F' ? 'Mme' : 'M.';
-    document.getElementById('tooltipName').textContent = `${civilite} ${actor.nom}`;
-    document.getElementById('tooltipCirco').textContent = actor.circo;
+    const civilite = (actor.genre || actor.sex) === 'F' ? 'Mme' : 'M.';
+    document.getElementById('tooltipName').textContent = `${civilite} ${prenom} ${nom}`.trim();
+    document.getElementById('tooltipCirco').textContent = actor.circo || actor.circonscription || '';
     
     const groupeColor = GROUPES_COULEURS[actor.groupe] || "#8D949A";
     const groupDiv = document.getElementById('tooltipGroup');
@@ -358,7 +347,7 @@
     const g = parseInt(groupeColor.slice(3,5),16);
     const b = parseInt(groupeColor.slice(5,7),16);
     groupDiv.style.color = ((0.299*r + 0.587*g + 0.114*b) / 255) > 0.6 ? "#222" : "#fff";
-    groupDiv.querySelector('span').textContent = actor.groupe;
+    groupDiv.querySelector('span').textContent = actor.groupe || '';
 
     tooltip.classList.add('visible');
 
@@ -370,7 +359,7 @@
     seatBadge.style.display = 'block';
     
     seatBadgeInner.textContent = seatIndex;
-    seatBadgeInner.style.backgroundColor = COLORS[seatEl.getAttribute('data-status')];
+    seatBadgeInner.style.backgroundColor = COLORS[seatEl.getAttribute('data-status')] || '#8D949A';
 
     if (currentSelected) currentSelected.classList.remove('selected');
     currentSelected = seatEl;
@@ -386,6 +375,11 @@
 
   async function renderHemicycle() {
     try {
+      // Réinitialiser
+      allSeats = [];
+      document.getElementById('hemicycleContainer').innerHTML = '<div class="error">Chargement de l\'hémicycle...</div>';
+      hideTooltip();
+
       const response = await fetch(BACK_URL);
       const svgText = await response.text();
       document.getElementById('hemicycleContainer').innerHTML = svgText;
@@ -394,12 +388,10 @@
       const seatPathsRes = await fetch(SEAT_PATHS_URL);
       const seatPaths = await seatPathsRes.json();
 
-      // Analyse des rangs
       computeRows(seatPaths);
 
       const totalDeputes = currentData.sieges.length;
       
-      // Déterminer le nombre de rangs nécessaires
       let rangsNecessaires = 0;
       let cumul = 0;
       for (let i = 0; i < SIEGES_PAR_RANG.length; i++) {
@@ -408,8 +400,6 @@
         if (cumul >= totalDeputes) break;
       }
 
-      // Créer un dictionnaire des sièges à afficher
-      // indexSeat -> { status, data }
       const activeSeats = new Map();
       let depIndex = 0;
 
@@ -427,7 +417,6 @@
         }
       }
 
-      // Dessiner les sièges
       seatPaths.forEach((pathD, index) => {
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
         path.setAttribute("d", pathD);
@@ -444,7 +433,7 @@
             const status = dep.vote || 'absent';
             path.setAttribute('data-status', status);
             path.setAttribute('data-seat-index', seatInfo.order);
-            path.style.fill = COLORS[status];
+            path.style.fill = COLORS[status] || COLORS.absent;
             
             if (status === 'absent') {
               path.classList.add('absent');
@@ -461,12 +450,10 @@
               else showTooltip(path, dep, seatInfo.order);
             });
           } else {
-            // Siège vide (vacant)
             path.setAttribute('data-status', 'vacant');
             path.classList.add('vacant');
           }
         } else {
-          // Siège complètement masqué (rang non atteint)
           path.classList.add('hidden-seat');
         }
       });
@@ -489,6 +476,7 @@
     const urlParams = new URLSearchParams(window.location.search);
     const dataParam = urlParams.get('data');
 
+    // Rétrocompatibilité : ?data= (petites données uniquement)
     if (dataParam) {
       try {
         const decodedStr = decodeURIComponent(escape(atob(dataParam)));
@@ -497,20 +485,53 @@
         return;
       } catch (e) {
         console.error("Erreur URL", e);
-        alert("Données URL invalides.");
       }
     }
 
-    document.getElementById('btnGenerate').addEventListener('click', () => {
-      const input = document.getElementById('jsonInput').value;
-      try {
-        const data = JSON.parse(input);
-        startApp(data);
-      } catch (e) {
-        alert("JSON invalide.");
-      }
-    });
+    const btnGenerate = document.getElementById('btnGenerate');
+    if (btnGenerate) {
+      btnGenerate.addEventListener('click', () => {
+        const input = document.getElementById('jsonInput').value;
+        try {
+          const data = JSON.parse(input);
+          startApp(data);
+        } catch (e) {
+          alert("JSON invalide.");
+        }
+      });
+    }
   });
+
+  // === NOUVEAU : réception des données via postMessage (page parente) ===
+  window.addEventListener('message', (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== 'object') return;
+
+    if (msg.type === 'hemicycle_data' && msg.data) {
+      try {
+        startApp(msg.data);
+      } catch (e) {
+        console.error('Erreur réception données hémicycle:', e);
+      }
+    }
+  });
+
+  // === NOUVEAU : signale à la page parente que l'iframe est prête ===
+  // Envoyé dès que le DOM est prêt (avant le fetch du SVG qui est asynchrone)
+  function notifyParentReady() {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'hemicycle_ready' }, '*');
+      }
+    } catch (e) {}
+  }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    // Le DOM est déjà prêt
+    setTimeout(notifyParentReady, 0);
+  } else {
+    document.addEventListener('DOMContentLoaded', notifyParentReady);
+  }
+  window.addEventListener('load', notifyParentReady);
 
   document.getElementById('tooltipClose').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -520,6 +541,7 @@
     if (!tooltip.contains(e.target) && !e.target.classList.contains('seat')) hideTooltip();
   });
 </script>
+<script src="https://vote.honore-romane.fr/scrutins/export.js"></script>
 <script src="https://vote.honore-romane.fr/scrutins/export.js"></script>
 </body>
 </html>
