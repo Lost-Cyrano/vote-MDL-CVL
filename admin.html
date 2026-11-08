@@ -71,6 +71,7 @@
         .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--text); color: white; padding: 0.75rem 1.5rem; border-radius: 8px; font-size: 0.9rem; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
         .toast.show { opacity: 1; }
         .server-status { font-size: 0.75rem; color: var(--text-light); text-align: center; margin-top: 0.5rem; }
+        .hemicycle-frame { width: 100%; height: 80vh; min-height: 600px; border: 1px solid var(--border); border-radius: 12px; background: white; }
     </style>
 </head>
 <body>
@@ -139,6 +140,9 @@
                         <div class="stat"><div class="stat-value" id="total-voters">0</div><div class="stat-label">Votants</div></div>
                     </div>
                     <div id="results-list"></div>
+                    <div id="hemicycle-embed" style="margin-top: 1.5rem;">
+                        <iframe id="hemicycle-frame" class="hemicycle-frame" src="" frameborder="0"></iframe>
+                    </div>
                     <button class="success" onclick="newVote()" style="margin-top: 1rem;">Créer un nouveau vote</button>
                 </div>
             </div>
@@ -183,7 +187,6 @@
                 path: server.path,
                 secure: server.secure,
                 key: server.key,
-                // Reconnexion agressive
                 pingInterval: 5000
             };
             
@@ -222,14 +225,12 @@
             peer.on('error', (err) => {
                 console.error('Erreur PeerJS:', err);
                 if (err.type === 'unavailable-id') {
-                    // Régénère un code différent
                     showToast('Code déjà utilisé, régénération...');
                     try { peer.destroy(); } catch(e) {}
                     setTimeout(() => init(), 500);
                     return;
                 }
                 if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
-                    // Le serveur a un problème -> basculer vers un autre
                     if (!opened) {
                         switchToNextServer();
                     } else {
@@ -278,14 +279,12 @@
                 if (peer && !peer.destroyed && peer.disconnected) {
                     try { peer.reconnect(); return; } catch(e) {}
                 }
-                // Recréer complètement la session
                 const savedCode = displayCode;
                 const savedSessionId = sessionId;
                 try { peer.destroy(); } catch(e) {}
                 peer = null;
                 setTimeout(() => {
                     if (sessionClosed) return;
-                    // Recréer avec le même code
                     displayCode = savedCode;
                     sessionId = savedSessionId;
                     recreatePeerWithCurrentCode();
@@ -317,7 +316,6 @@
                 updateServerStatus(`Serveur : ${server.host} ✓`);
                 document.getElementById('connection-status').textContent = 'Prêt';
                 document.getElementById('connection-status').className = 'badge success';
-                // Re-broadcast l'état courant aux clients
                 if (voteActive && currentVote) {
                     broadcast({ type: 'new_vote', vote: { question: currentVote.question, mode: currentVote.mode, options: currentVote.options, maxChoices: currentVote.maxChoices } });
                 }
@@ -404,7 +402,69 @@
             document.getElementById('total-votes').textContent = results.totalExpressed; document.getElementById('absolute-majority').textContent = results.absoluteMajority; document.getElementById('total-voters').textContent = results.totalVoters;
             const list = document.getElementById('results-list'); list.innerHTML = '';
             results.sorted.forEach(item => { const isWinner = results.winners.some(w => w.name === item.name); const div = document.createElement('div'); div.className = 'result-item' + (isWinner ? ' winner' : ''); div.innerHTML = `<div style="flex: 1;"><div class="flex-between"><span style="font-weight: ${isWinner ? '700' : '400'};">${escapeHtml(item.name)}</span><span>${item.count} voix (${item.percentage.toFixed(1)}%)</span></div><div class="result-bar"><div class="result-bar-fill" style="width: ${item.percentage}%; ${isWinner ? 'background: var(--success);' : ''}"></div></div></div>${isWinner ? '<span class="badge success" style="margin-left: 0.5rem;">Élu</span>' : ''}`; list.appendChild(div); });
+            
+            // === EMBED HÉMICYCLE ===
+            embedHemicycle(results);
         }
+        
+        function embedHemicycle(results) {
+            // Construire le JSON récapitulatif du vote
+            const voteData = buildHemicycleData(results);
+            
+            // Encoder en base64 pour l'URL
+            const jsonStr = JSON.stringify(voteData);
+            const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+            const url = `https://vote.honore-romane.fr/scrutins/hemicycle.html?data=${encodeURIComponent(encoded)}`;
+            
+            const frame = document.getElementById('hemicycle-frame');
+            frame.src = url;
+        }
+        
+        function buildHemicycleData(results) {
+            const p = results.counts['Pour'] || 0;
+            const c = results.counts['Contre'] || 0;
+            const a = results.counts['Abstention'] || 0;
+            const totalVotes = p + c + a;
+            
+            // Générer la liste des sièges dans l'ordre des votes reçus
+            const sieges = [];
+            let seatIndex = 1;
+            
+            // Parcourir les votes dans l'ordre chronologique de réception
+            currentVote.votes.forEach(vote => {
+                if (currentVote.mode === 'simple') {
+                    const idx = vote.answers[0];
+                    if (idx !== undefined && currentVote.options[idx]) {
+                        const voteType = currentVote.options[idx].toLowerCase(); // "pour", "contre", "abstention"
+                        if (voteType === 'pour' || voteType === 'contre' || voteType === 'abstention') {
+                            sieges.push({
+                                nom: `Siege ${seatIndex}`,
+                                genre: Math.random() < 0.5 ? 'M' : 'F',
+                                circo: 'circonscription',
+                                groupe: 'groupe politique',
+                                vote: voteType
+                            });
+                            seatIndex++;
+                        }
+                    }
+                }
+                // Pour le mode multiple, on ne gère pas l'hémicycle (pas de pour/contre/abstention)
+            });
+            
+            // Si des sièges manquent (car votes non comptabilisés), compléter avec des absents
+            // On ne complète pas car l'hémicycle affichera des sièges vides (vacants) pour le reste
+            
+            return {
+                numero: displayCode,
+                date: new Date().toISOString().slice(0, 10),
+                titre: currentVote.question,
+                pour: p,
+                contre: c,
+                abstention: a,
+                sieges: sieges
+            };
+        }
+        
         function newVote() { document.getElementById('results-section').classList.add('hidden'); document.getElementById('vote-section').classList.add('hidden'); document.getElementById('create-section').classList.remove('hidden'); document.getElementById('question-input').value = ''; document.getElementById('options-list').innerHTML = ''; document.getElementById('max-choices').value = '1'; document.getElementById('vote-mode').value = 'simple'; toggleVoteMode(); currentVote = null; hasVoted.clear(); broadcast({ type: 'reset' }); broadcast({ type: 'draft_cancelled' }); }
         function renderHistory() { const list = document.getElementById('history-list'); list.innerHTML = ''; if (history.length === 0) { list.innerHTML = '<p style="text-align: center; color: var(--text-light); padding: 1rem;">Aucun vote dans l\'historique.</p>'; return; } history.forEach((entry) => { const div = document.createElement('div'); div.className = 'history-item'; div.innerHTML = `<div class="flex-between"><strong>${escapeHtml(entry.question)}</strong><span class="badge info">${new Date(entry.timestamp).toLocaleString()}</span></div><div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem;">${entry.results.totalExpressed} suffrages exprimés - ${entry.results.totalVoters} votants</div>`; div.onclick = () => toggleHistoryDetail(div, entry); list.appendChild(div); }); }
         function toggleHistoryDetail(element, entry) { const existing = element.querySelector('.history-detail'); if (existing) { existing.remove(); return; } const detail = document.createElement('div'); detail.className = 'history-detail'; let html = `<p><strong>Question :</strong> ${escapeHtml(entry.question)}</p>`; html += `<p><strong>Mode :</strong> ${entry.mode === 'simple' ? 'Simple' : 'Choix multiples (' + entry.maxChoices + ' max)'}</p>`; html += `<p><strong>Suffrages exprimés :</strong> ${entry.results.totalExpressed}</p>`; html += `<p><strong>Majorité absolue :</strong> ${entry.results.absoluteMajority}</p>`; html += `<p><strong>Votants :</strong> ${entry.results.totalVoters}</p>`; html += `<p><strong>Résultats :</strong></p><ul style="margin-left: 1rem; margin-top: 0.25rem;">`; entry.results.sorted.forEach(item => { const isWinner = entry.results.winners.some(w => w.name === item.name); html += `<li>${escapeHtml(item.name)} : ${item.count} voix (${item.percentage.toFixed(1)}%) ${isWinner ? '✓ Élu' : ''}</li>`; }); html += '</ul>'; detail.innerHTML = html; element.appendChild(detail); }
