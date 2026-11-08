@@ -163,457 +163,456 @@
     </div>
 
     <script>
-        let peer = null, conn = null, sessionId = null, displayCode = null, reconnectInterval = null;
-        let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
-        let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
-        let currentServerIndex = 0, reconnectAttempts = 0;
-        // Numéro de siège du votant (saisi avant connexion)
-        let siegesNumero = null;
+    let peer = null, conn = null, sessionId = null, displayCode = null, reconnectInterval = null;
+    let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
+    let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
+    let currentServerIndex = 0, reconnectAttempts = 0;
+    // Numéro de siège du votant — UNIQUEMENT en mémoire (pas de localStorage)
+    let siegeNumero = null;
 
-        const SIEGE_STORAGE_KEY = 'vote_siege_numero';
+    function init() {
+        const params = new URLSearchParams(window.location.search);
+        const codeFromUrl = params.get('s') || params.get('session');
+        const siegeFromUrl = params.get('siege');
 
-        function init() {
-            // Récupérer un éventuel numéro de siège déjà saisi
-            const savedSiege = localStorage.getItem(SIEGE_STORAGE_KEY);
-            if (savedSiege) {
-                const n = parseInt(savedSiege);
-                if (!isNaN(n) && n > 0) siegesNumero = n;
-            }
-
-            const params = new URLSearchParams(window.location.search);
-            const codeFromUrl = params.get('s') || params.get('session');
-            // Le numéro de siège peut aussi venir de l'URL (ex. ?s=abcd&siege=12)
-            const siegeFromUrl = params.get('siege');
-            if (siegeFromUrl) {
-                const n = parseInt(siegeFromUrl);
-                if (!isNaN(n) && n > 0) {
-                    siegesNumero = n;
-                    try { localStorage.setItem(SIEGE_STORAGE_KEY, String(n)); } catch(e) {}
-                }
-            }
-
-            // Si pas de numéro de siège -> écran de saisie
-            if (!siegesNumero) {
-                showScreen('siege-screen');
-                setTimeout(() => document.getElementById('siege-input').focus(), 100);
-                return;
-            }
-
-            // Si pas de code -> écran de code (avec rappel du siège)
-            if (!codeFromUrl) {
-                updateSiegeReminder();
-                showScreen('code-screen');
-                setTimeout(() => document.getElementById('session-code-input').focus(), 100);
-                return;
-            }
-
-            // Tout est là -> connexion
-            displayCode = codeFromUrl.toLowerCase().trim();
-            sessionId = APP_PREFIX + '-' + displayCode;
-            startConnection();
+        // Le numéro de siège peut venir de l'URL (ex. ?s=abcd&siege=12)
+        if (siegeFromUrl) {
+            const n = parseInt(siegeFromUrl);
+            if (!isNaN(n) && n > 0) siegeNumero = n;
         }
 
-        // ===== Écran de saisie du numéro de siège =====
-        function submitSiege() {
-            const input = document.getElementById('siege-input');
-            const errDiv = document.getElementById('siege-error');
-            const n = parseInt(input.value);
-            if (isNaN(n) || n < 1) {
-                errDiv.textContent = 'Veuillez entrer un numéro de siège valide (entier positif).';
-                errDiv.classList.remove('hidden');
-                return;
-            }
-            errDiv.classList.add('hidden');
-            siegesNumero = n;
-            try { localStorage.setItem(SIEGE_STORAGE_KEY, String(n)); } catch(e) {}
+        // Si pas de numéro de siège → écran de saisie du siège
+        if (!siegeNumero) {
+            showScreen('siege-screen');
+            setTimeout(() => document.getElementById('siege-input').focus(), 100);
+            return;
+        }
 
-            // Enchaîner sur l'écran du code de session
+        // Si pas de code de session → écran de code (avec rappel du siège)
+        if (!codeFromUrl) {
             updateSiegeReminder();
             showScreen('code-screen');
             setTimeout(() => document.getElementById('session-code-input').focus(), 100);
+            return;
         }
 
-        function changeSiege() {
-            siegesNumero = null;
-            try { localStorage.removeItem(SIEGE_STORAGE_KEY); } catch(e) {}
-            document.getElementById('siege-input').value = '';
-            showScreen('siege-screen');
-            setTimeout(() => document.getElementById('siege-input').focus(), 100);
-        }
+        // Siège + code présents → connexion automatique (saute l'écran code)
+        displayCode = codeFromUrl.toLowerCase().trim();
+        sessionId = APP_PREFIX + '-' + displayCode;
+        startConnection();
+    }
 
-        function updateSiegeReminder() {
-            const el = document.getElementById('siege-reminder');
-            if (el) el.textContent = `Siège n°${siegesNumero}`;
+    // ===== Écran de saisie du numéro de siège =====
+    function submitSiege() {
+        const input = document.getElementById('siege-input');
+        const errDiv = document.getElementById('siege-error');
+        const n = parseInt(input.value);
+        if (isNaN(n) || n < 1) {
+            errDiv.textContent = 'Veuillez entrer un numéro de siège valide (entier positif).';
+            errDiv.classList.remove('hidden');
+            return;
         }
+        errDiv.classList.add('hidden');
+        siegeNumero = n;
 
-        function submitCode() {
-            const input = document.getElementById('session-code-input');
-            const code = input.value.trim().toLowerCase();
-            if (!code) return;
-            displayCode = code;
-            sessionId = APP_PREFIX + '-' + code;
+        // Si un code de session est déjà dans l'URL → connexion automatique
+        const params = new URLSearchParams(window.location.search);
+        const codeFromUrl = params.get('s') || params.get('session');
+        if (codeFromUrl) {
+            displayCode = codeFromUrl.toLowerCase().trim();
+            sessionId = APP_PREFIX + '-' + displayCode;
+            // Met à jour l'URL pour refléter le siège (sans recharger)
             const url = new URL(window.location);
-            url.searchParams.set('s', code);
-            if (siegesNumero) url.searchParams.set('siege', String(siegesNumero));
+            url.searchParams.set('s', displayCode);
+            url.searchParams.set('siege', String(siegeNumero));
             window.history.replaceState({}, '', url);
             startConnection();
+            return;
         }
 
-        function startQrScan() {
-            const readerDiv = document.getElementById('qr-reader');
-            const errDiv = document.getElementById('qr-error');
-            errDiv.classList.add('hidden');
-            if (qrScanner) {
-                readerDiv.classList.add('hidden');
-                try { qrScanner.clear(); } catch(e) {}
-                qrScanner = null;
-                return;
-            }
-            readerDiv.classList.remove('hidden');
-            qrScanner = new Html5Qrcode("qr-reader");
-            qrScanner.start(
-                { facingMode: "environment" },
-                { fps: 10, qrbox: { width: 250, height: 250 } },
-                (decodedText) => {
-                    let code = null;
-                    try {
-                        const url = new URL(decodedText);
-                        code = url.searchParams.get('s') || url.searchParams.get('session');
-                    } catch(e) {
-                        code = decodedText.trim().toLowerCase();
-                    }
-                    if (code) {
-                        qrScanner.stop().then(() => {
-                            readerDiv.classList.add('hidden');
-                            qrScanner = null;
-                            document.getElementById('session-code-input').value = code;
-                            submitCode();
-                        }).catch(() => {
-                            readerDiv.classList.add('hidden');
-                            qrScanner = null;
-                            document.getElementById('session-code-input').value = code;
-                            submitCode();
-                        });
-                    } else {
-                        errDiv.textContent = 'QR Code invalide. Veuillez réessayer.';
-                        errDiv.classList.remove('hidden');
-                    }
-                },
-                () => {}
-            ).catch(err => {
-                errDiv.textContent = 'Impossible d\'accéder à la caméra : ' + err;
-                errDiv.classList.remove('hidden');
-                readerDiv.classList.add('hidden');
-                qrScanner = null;
-            });
-        }
+        // Sinon → écran de code
+        updateSiegeReminder();
+        showScreen('code-screen');
+        setTimeout(() => document.getElementById('session-code-input').focus(), 100);
+    }
 
-        function startConnection() {
-            if (sessionClosed) return;
-            if (!siegesNumero) {
-                showScreen('siege-screen');
-                return;
-            }
-            showScreen('loading-screen');
-            connectToAdmin();
+    function changeSiege() {
+        siegeNumero = null; // uniquement en mémoire, rien à supprimer côté stockage
+        document.getElementById('siege-input').value = '';
+        showScreen('siege-screen');
+        setTimeout(() => document.getElementById('siege-input').focus(), 100);
+    }
+
+    function updateSiegeReminder() {
+        const el = document.getElementById('siege-reminder');
+        if (el) el.textContent = `Siège n°${siegeNumero}`;
+    }
+
+    function submitCode() {
+        const input = document.getElementById('session-code-input');
+        const code = input.value.trim().toLowerCase();
+        if (!code) return;
+        displayCode = code;
+        sessionId = APP_PREFIX + '-' + code;
+        const url = new URL(window.location);
+        url.searchParams.set('s', code);
+        if (siegeNumero) url.searchParams.set('siege', String(siegeNumero));
+        window.history.replaceState({}, '', url);
+        startConnection();
+    }
+
+    function startQrScan() {
+        const readerDiv = document.getElementById('qr-reader');
+        const errDiv = document.getElementById('qr-error');
+        errDiv.classList.add('hidden');
+        if (qrScanner) {
+            readerDiv.classList.add('hidden');
+            try { qrScanner.clear(); } catch(e) {}
+            qrScanner = null;
+            return;
         }
-        
-        function connectToAdmin() {
-            if (sessionClosed) return;
-            updateStatus('Connexion...', false);
-            const server = PEER_CONFIG.servers[currentServerIndex];
-            updateServerHint(`Serveur : ${server.host} (${currentServerIndex + 1}/${PEER_CONFIG.servers.length})`);
-            if (!clientId) clientId = 'c-' + Math.random().toString(36).substr(2, 12);
-            if (peer) { try { peer.destroy(); } catch(e) {} }
-            
-            const peerOptions = {
-                ...PEER_CONFIG.commonOptions,
-                host: server.host,
-                port: server.port,
-                path: server.path,
-                secure: server.secure,
-                key: server.key
-            };
-            
-            try {
-                peer = new Peer(clientId, peerOptions);
-            } catch (e) {
-                switchToNextServerClient();
-                return;
-            }
-            
-            let opened = false;
-            
-            peer.on('open', (id) => {
-                opened = true;
-                console.log('Client PeerJS ouvert avec ID:', id, 'sur', server.host);
-                conn = peer.connect(sessionId, { reliable: true });
-                connectionTimeout = setTimeout(() => {
-                    if (!connectionEstablished && !sessionClosed) {
-                        updateStatus('Admin introuvable', false);
-                        if (conn) { try { conn.close(); } catch(e) {} }
-                        scheduleReconnect();
-                    }
-                }, 8000);
-                conn.on('open', () => {
-                    connectionEstablished = true;
-                    clearTimeout(connectionTimeout);
-                    reconnectAttempts = 0;
-                    updateStatus('Connecté', true);
-                    // Envoyer le hello avec le numéro de siège
-                    conn.send({ type: 'hello', siege: siegesNumero });
-                });
-                conn.on('data', (data) => handleAdminMessage(data));
-                conn.on('close', () => { connectionEstablished = false; if (sessionClosed) return; updateStatus('Déconnecté', false); scheduleReconnect(); });
-                conn.on('error', (err) => { connectionEstablished = false; clearTimeout(connectionTimeout); if (sessionClosed) return; updateStatus('Erreur', false); scheduleReconnect(); });
-            });
-            
-            peer.on('error', (err) => {
-                if (sessionClosed) return;
-                console.error('Erreur PeerJS:', err);
-                if (err.type === 'unavailable-id') {
-                    clientId = 'c-' + Math.random().toString(36).substr(2, 12);
-                    scheduleReconnect();
-                    return;
+        readerDiv.classList.remove('hidden');
+        qrScanner = new Html5Qrcode("qr-reader");
+        qrScanner.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            (decodedText) => {
+                let code = null;
+                try {
+                    const url = new URL(decodedText);
+                    code = url.searchParams.get('s') || url.searchParams.get('session');
+                } catch(e) {
+                    code = decodedText.trim().toLowerCase();
                 }
-                if (!opened) {
-                    switchToNextServerClient();
-                } else {
-                    updateStatus('Erreur', false);
-                    scheduleReconnect();
-                }
-            });
-            
-            peer.on('disconnected', () => {
-                if (sessionClosed) return;
-                updateStatus('Reconnexion...', false);
-                if (!opened) switchToNextServerClient();
-                else scheduleReconnect();
-            });
-            
-            peer.on('close', () => {
-                if (sessionClosed) return;
-                scheduleReconnect();
-            });
-        }
-        
-        function switchToNextServerClient() {
-            currentServerIndex = (currentServerIndex + 1) % PEER_CONFIG.servers.length;
-            console.warn('Client bascule vers serveur:', PEER_CONFIG.servers[currentServerIndex].host);
-            try { if (peer) peer.destroy(); } catch(e) {}
-            peer = null;
-            setTimeout(() => connectToAdmin(), 800);
-        }
-        
-        function updateServerHint(text) {
-            const el = document.getElementById('server-hint');
-            if (el) el.textContent = text;
-        }
-        
-        function scheduleReconnect() {
-            if (sessionClosed) return;
-            if (reconnectInterval) clearInterval(reconnectInterval);
-            reconnectAttempts++;
-            if (reconnectAttempts > 10) {
-                reconnectAttempts = 0;
-                switchToNextServerClient();
-                return;
-            }
-            reconnectInterval = setInterval(() => {
-                if (sessionClosed) { clearInterval(reconnectInterval); return; }
-                if (!conn || !conn.open) { connectToAdmin(); } else { clearInterval(reconnectInterval); }
-            }, 3000);
-        }
-        
-        function handleAdminMessage(data) {
-            if (sessionClosed) return;
-            switch(data.type) {
-                case 'new_vote':
-                    currentVote = data.vote;
-                    hasVotedThisRound = false;
-                    selectedAnswers = [];
-                    showVoteScreen();
-                    break;
-                case 'results':
-                    showScreen('results-waiting-screen');
-                    break;
-                case 'reset':
-                    currentVote = null;
-                    hasVotedThisRound = false;
-                    selectedAnswers = [];
-                    pendingVoteDraft = null;
-                    resetWaitingPreview();
-                    showScreen('waiting-screen');
-                    break;
-                case 'close':
-                    sessionClosed = true;
-                    if (reconnectInterval) clearInterval(reconnectInterval);
-                    if (connectionTimeout) clearTimeout(connectionTimeout);
-                    if (qrScanner) { try { qrScanner.stop(); } catch(e) {} }
-                    if (conn) { try { conn.close(); } catch(e) {} }
-                    if (peer) { try { peer.destroy(); } catch(e) {} }
-                    showScreen('closed-screen');
-                    break;
-                case 'state':
-                    if (data.state === 'voting' && data.vote) {
-                        currentVote = data.vote;
-                        if (data.hasVoted) { hasVotedThisRound = true; showScreen('voted-screen'); }
-                        else { showVoteScreen(); }
-                    } else if (data.state === 'results') {
-                        showScreen('results-waiting-screen');
-                    } else {
-                        showScreen('waiting-screen');
-                    }
-                    break;
-                case 'draft':
-                    pendingVoteDraft = data.draft;
-                    updateWaitingPreview(data.draft);
-                    break;
-                case 'draft_cancelled':
-                    pendingVoteDraft = null;
-                    resetWaitingPreview();
-                    break;
-            }
-        }
-
-        function updateWaitingPreview(draft) {
-            const previewQuestion = document.getElementById('preview-question');
-            const previewSimple = document.getElementById('preview-simple');
-            const previewMultiple = document.getElementById('preview-multiple');
-            const previewOptionsContainer = document.getElementById('preview-options-container');
-            if (!draft) { resetWaitingPreview(); return; }
-            previewQuestion.textContent = draft.question || 'Question en cours de rédaction...';
-            if (draft.mode === 'simple') {
-                previewSimple.classList.remove('hidden');
-                previewMultiple.classList.add('hidden');
-            } else if (draft.mode === 'multiple') {
-                previewSimple.classList.add('hidden');
-                previewMultiple.classList.remove('hidden');
-                const maxDisplay = previewMultiple.querySelector('.info-box strong');
-                if (maxDisplay) maxDisplay.textContent = draft.maxChoices || '?';
-                previewOptionsContainer.innerHTML = '';
-                if (draft.options && draft.options.length > 0) {
-                    draft.options.forEach(opt => {
-                        if (opt.trim()) {
-                            const div = document.createElement('div');
-                            div.className = 'preview-option';
-                            div.innerHTML = `<div class="preview-check"></div><div class="preview-text">${escapeHtml(opt)}</div>`;
-                            previewOptionsContainer.appendChild(div);
-                        }
+                if (code) {
+                    qrScanner.stop().then(() => {
+                        readerDiv.classList.add('hidden');
+                        qrScanner = null;
+                        document.getElementById('session-code-input').value = code;
+                        submitCode();
+                    }).catch(() => {
+                        readerDiv.classList.add('hidden');
+                        qrScanner = null;
+                        document.getElementById('session-code-input').value = code;
+                        submitCode();
                     });
                 } else {
-                    previewOptionsContainer.innerHTML = '<p style="color: var(--text-light); font-size: 0.85rem; text-align: center; padding: 0.5rem;">Options en cours de rédaction...</p>';
+                    errDiv.textContent = 'QR Code invalide. Veuillez réessayer.';
+                    errDiv.classList.remove('hidden');
                 }
-            }
-        }
-
-        function resetWaitingPreview() {
-            document.getElementById('preview-question').textContent = 'Question à venir...';
-            document.getElementById('preview-simple').classList.remove('hidden');
-            document.getElementById('preview-multiple').classList.add('hidden');
-            document.getElementById('preview-options-container').innerHTML = '';
-        }
-
-        function showScreen(screenId) {
-            const screens = ['siege-screen', 'code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen'];
-            screens.forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', id !== screenId); });
-            const container = document.getElementById('main-container');
-            container.classList.toggle('landscape', screenId === 'vote-simple-screen');
-
-            // Mettre à jour les badges de siège sur les écrans qui en ont
-            const badgeText = siegesNumero ? `Siège n°${siegesNumero}` : '';
-            ['waiting-siege-badge', 'vote-simple-siege-badge', 'vote-multiple-siege-badge', 'voted-siege-badge'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.textContent = badgeText;
-            });
-        }
-
-        function showVoteScreen() {
-            if (!currentVote) return;
-            if (currentVote.mode === 'simple') {
-                document.getElementById('vote-simple-question').textContent = currentVote.question;
-                showScreen('vote-simple-screen');
-            } else {
-                document.getElementById('vote-multiple-question').textContent = currentVote.question;
-                document.getElementById('max-choices-display').textContent = currentVote.maxChoices;
-                document.getElementById('selected-count-display').textContent = '0';
-                const container = document.getElementById('options-container');
-                container.innerHTML = '';
-                currentVote.options.forEach((opt, index) => {
-                    const div = document.createElement('div');
-                    div.className = 'option multiple';
-                    div.dataset.index = index;
-                    div.onclick = () => toggleOption(index, div);
-                    div.innerHTML = `<div class="option-check"></div><div class="option-text">${escapeHtml(opt)}</div>`;
-                    container.appendChild(div);
-                });
-                updateMultipleUI();
-                showScreen('vote-multiple-screen');
-            }
-        }
-
-        function toggleOption(index, element) {
-            if (element.classList.contains('dimmed')) return;
-            const pos = selectedAnswers.indexOf(index);
-            if (pos > -1) {
-                selectedAnswers.splice(pos, 1);
-                element.classList.remove('selected');
-            } else {
-                if (selectedAnswers.length >= currentVote.maxChoices) {
-                    const firstIdx = selectedAnswers.shift();
-                    document.querySelectorAll('.option').forEach(el => {
-                        if (parseInt(el.dataset.index) === firstIdx) el.classList.remove('selected');
-                    });
-                }
-                selectedAnswers.push(index);
-                element.classList.add('selected');
-            }
-            updateMultipleUI();
-        }
-
-        function updateMultipleUI() {
-            const count = selectedAnswers.length;
-            const max = currentVote.maxChoices;
-            document.getElementById('selected-count-display').textContent = count;
-            document.querySelectorAll('.option').forEach(el => {
-                const idx = parseInt(el.dataset.index);
-                const isSelected = selectedAnswers.includes(idx);
-                if (count >= max && !isSelected) el.classList.add('dimmed');
-                else el.classList.remove('dimmed');
-            });
-        }
-
-        // ===== Envoi des votes avec le numéro de siège =====
-        function sendVote(answers) {
-            if (!conn || !conn.open) { alert('Connexion perdue.'); return; }
-            if (!siegesNumero) { alert('Numéro de siège manquant.'); return; }
-            conn.send({ type: 'vote', siege: siegesNumero, answers: answers });
-            hasVotedThisRound = true;
-            showScreen('voted-screen');
-        }
-
-        function voteSimple(index) { sendVote([index]); }
-        function submitMultiple() { sendVote(selectedAnswers); }
-        function voteBlank() { sendVote([]); }
-
-        function updateStatus(text, connected) {
-            const statusText = document.getElementById('status-text');
-            const statusDot = document.getElementById('status-dot');
-            if (statusText) statusText.textContent = text;
-            if (statusDot) statusDot.classList.toggle('connected', connected);
-        }
-
-        function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-
-        window.onload = init;
-        document.addEventListener('visibilitychange', () => {
-            if (sessionClosed) return;
-            if (!document.hidden && (!conn || !conn.open) && siegesNumero) connectToAdmin();
+            },
+            () => {}
+        ).catch(err => {
+            errDiv.textContent = 'Impossible d\'accéder à la caméra : ' + err;
+            errDiv.classList.remove('hidden');
+            readerDiv.classList.add('hidden');
+            qrScanner = null;
         });
-        window.onbeforeunload = () => {
-            if (reconnectInterval) clearInterval(reconnectInterval);
-            if (connectionTimeout) clearTimeout(connectionTimeout);
+    }
+
+    function startConnection() {
+        if (sessionClosed) return;
+        if (!siegeNumero) {
+            showScreen('siege-screen');
+            return;
+        }
+        showScreen('loading-screen');
+        connectToAdmin();
+    }
+    
+    function connectToAdmin() {
+        if (sessionClosed) return;
+        updateStatus('Connexion...', false);
+        const server = PEER_CONFIG.servers[currentServerIndex];
+        updateServerHint(`Serveur : ${server.host} (${currentServerIndex + 1}/${PEER_CONFIG.servers.length})`);
+        if (!clientId) clientId = 'c-' + Math.random().toString(36).substr(2, 12);
+        if (peer) { try { peer.destroy(); } catch(e) {} }
+        
+        const peerOptions = {
+            ...PEER_CONFIG.commonOptions,
+            host: server.host,
+            port: server.port,
+            path: server.path,
+            secure: server.secure,
+            key: server.key
         };
-    </script>
+        
+        try {
+            peer = new Peer(clientId, peerOptions);
+        } catch (e) {
+            switchToNextServerClient();
+            return;
+        }
+        
+        let opened = false;
+        
+        peer.on('open', (id) => {
+            opened = true;
+            console.log('Client PeerJS ouvert avec ID:', id, 'sur', server.host);
+            conn = peer.connect(sessionId, { reliable: true });
+            connectionTimeout = setTimeout(() => {
+                if (!connectionEstablished && !sessionClosed) {
+                    updateStatus('Admin introuvable', false);
+                    if (conn) { try { conn.close(); } catch(e) {} }
+                    scheduleReconnect();
+                }
+            }, 8000);
+            conn.on('open', () => {
+                connectionEstablished = true;
+                clearTimeout(connectionTimeout);
+                reconnectAttempts = 0;
+                updateStatus('Connecté', true);
+                conn.send({ type: 'hello', siege: siegeNumero });
+            });
+            conn.on('data', (data) => handleAdminMessage(data));
+            conn.on('close', () => { connectionEstablished = false; if (sessionClosed) return; updateStatus('Déconnecté', false); scheduleReconnect(); });
+            conn.on('error', (err) => { connectionEstablished = false; clearTimeout(connectionTimeout); if (sessionClosed) return; updateStatus('Erreur', false); scheduleReconnect(); });
+        });
+        
+        peer.on('error', (err) => {
+            if (sessionClosed) return;
+            console.error('Erreur PeerJS:', err);
+            if (err.type === 'unavailable-id') {
+                clientId = 'c-' + Math.random().toString(36).substr(2, 12);
+                scheduleReconnect();
+                return;
+            }
+            if (!opened) {
+                switchToNextServerClient();
+            } else {
+                updateStatus('Erreur', false);
+                scheduleReconnect();
+            }
+        });
+        
+        peer.on('disconnected', () => {
+            if (sessionClosed) return;
+            updateStatus('Reconnexion...', false);
+            if (!opened) switchToNextServerClient();
+            else scheduleReconnect();
+        });
+        
+        peer.on('close', () => {
+            if (sessionClosed) return;
+            scheduleReconnect();
+        });
+    }
+    
+    function switchToNextServerClient() {
+        currentServerIndex = (currentServerIndex + 1) % PEER_CONFIG.servers.length;
+        console.warn('Client bascule vers serveur:', PEER_CONFIG.servers[currentServerIndex].host);
+        try { if (peer) peer.destroy(); } catch(e) {}
+        peer = null;
+        setTimeout(() => connectToAdmin(), 800);
+    }
+    
+    function updateServerHint(text) {
+        const el = document.getElementById('server-hint');
+        if (el) el.textContent = text;
+    }
+    
+    function scheduleReconnect() {
+        if (sessionClosed) return;
+        if (reconnectInterval) clearInterval(reconnectInterval);
+        reconnectAttempts++;
+        if (reconnectAttempts > 10) {
+            reconnectAttempts = 0;
+            switchToNextServerClient();
+            return;
+        }
+        reconnectInterval = setInterval(() => {
+            if (sessionClosed) { clearInterval(reconnectInterval); return; }
+            if (!conn || !conn.open) { connectToAdmin(); } else { clearInterval(reconnectInterval); }
+        }, 3000);
+    }
+    
+    function handleAdminMessage(data) {
+        if (sessionClosed) return;
+        switch(data.type) {
+            case 'new_vote':
+                currentVote = data.vote;
+                hasVotedThisRound = false;
+                selectedAnswers = [];
+                showVoteScreen();
+                break;
+            case 'results':
+                showScreen('results-waiting-screen');
+                break;
+            case 'reset':
+                currentVote = null;
+                hasVotedThisRound = false;
+                selectedAnswers = [];
+                pendingVoteDraft = null;
+                resetWaitingPreview();
+                showScreen('waiting-screen');
+                break;
+            case 'close':
+                sessionClosed = true;
+                if (reconnectInterval) clearInterval(reconnectInterval);
+                if (connectionTimeout) clearTimeout(connectionTimeout);
+                if (qrScanner) { try { qrScanner.stop(); } catch(e) {} }
+                if (conn) { try { conn.close(); } catch(e) {} }
+                if (peer) { try { peer.destroy(); } catch(e) {} }
+                showScreen('closed-screen');
+                break;
+            case 'state':
+                if (data.state === 'voting' && data.vote) {
+                    currentVote = data.vote;
+                    if (data.hasVoted) { hasVotedThisRound = true; showScreen('voted-screen'); }
+                    else { showVoteScreen(); }
+                } else if (data.state === 'results') {
+                    showScreen('results-waiting-screen');
+                } else {
+                    showScreen('waiting-screen');
+                }
+                break;
+            case 'draft':
+                pendingVoteDraft = data.draft;
+                updateWaitingPreview(data.draft);
+                break;
+            case 'draft_cancelled':
+                pendingVoteDraft = null;
+                resetWaitingPreview();
+                break;
+        }
+    }
+
+    function updateWaitingPreview(draft) {
+        const previewQuestion = document.getElementById('preview-question');
+        const previewSimple = document.getElementById('preview-simple');
+        const previewMultiple = document.getElementById('preview-multiple');
+        const previewOptionsContainer = document.getElementById('preview-options-container');
+        if (!draft) { resetWaitingPreview(); return; }
+        previewQuestion.textContent = draft.question || 'Question en cours de rédaction...';
+        if (draft.mode === 'simple') {
+            previewSimple.classList.remove('hidden');
+            previewMultiple.classList.add('hidden');
+        } else if (draft.mode === 'multiple') {
+            previewSimple.classList.add('hidden');
+            previewMultiple.classList.remove('hidden');
+            const maxDisplay = previewMultiple.querySelector('.info-box strong');
+            if (maxDisplay) maxDisplay.textContent = draft.maxChoices || '?';
+            previewOptionsContainer.innerHTML = '';
+            if (draft.options && draft.options.length > 0) {
+                draft.options.forEach(opt => {
+                    if (opt.trim()) {
+                        const div = document.createElement('div');
+                        div.className = 'preview-option';
+                        div.innerHTML = `<div class="preview-check"></div><div class="preview-text">${escapeHtml(opt)}</div>`;
+                        previewOptionsContainer.appendChild(div);
+                    }
+                });
+            } else {
+                previewOptionsContainer.innerHTML = '<p style="color: var(--text-light); font-size: 0.85rem; text-align: center; padding: 0.5rem;">Options en cours de rédaction...</p>';
+            }
+        }
+    }
+
+    function resetWaitingPreview() {
+        document.getElementById('preview-question').textContent = 'Question à venir...';
+        document.getElementById('preview-simple').classList.remove('hidden');
+        document.getElementById('preview-multiple').classList.add('hidden');
+        document.getElementById('preview-options-container').innerHTML = '';
+    }
+
+    function showScreen(screenId) {
+        const screens = ['siege-screen', 'code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen'];
+        screens.forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', id !== screenId); });
+        const container = document.getElementById('main-container');
+        container.classList.toggle('landscape', screenId === 'vote-simple-screen');
+
+        const badgeText = siegeNumero ? `Siège n°${siegeNumero}` : '';
+        ['waiting-siege-badge', 'vote-simple-siege-badge', 'vote-multiple-siege-badge', 'voted-siege-badge'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = badgeText;
+        });
+    }
+
+    function showVoteScreen() {
+        if (!currentVote) return;
+        if (currentVote.mode === 'simple') {
+            document.getElementById('vote-simple-question').textContent = currentVote.question;
+            showScreen('vote-simple-screen');
+        } else {
+            document.getElementById('vote-multiple-question').textContent = currentVote.question;
+            document.getElementById('max-choices-display').textContent = currentVote.maxChoices;
+            document.getElementById('selected-count-display').textContent = '0';
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+            currentVote.options.forEach((opt, index) => {
+                const div = document.createElement('div');
+                div.className = 'option multiple';
+                div.dataset.index = index;
+                div.onclick = () => toggleOption(index, div);
+                div.innerHTML = `<div class="option-check"></div><div class="option-text">${escapeHtml(opt)}</div>`;
+                container.appendChild(div);
+            });
+            updateMultipleUI();
+            showScreen('vote-multiple-screen');
+        }
+    }
+
+    function toggleOption(index, element) {
+        if (element.classList.contains('dimmed')) return;
+        const pos = selectedAnswers.indexOf(index);
+        if (pos > -1) {
+            selectedAnswers.splice(pos, 1);
+            element.classList.remove('selected');
+        } else {
+            if (selectedAnswers.length >= currentVote.maxChoices) {
+                const firstIdx = selectedAnswers.shift();
+                document.querySelectorAll('.option').forEach(el => {
+                    if (parseInt(el.dataset.index) === firstIdx) el.classList.remove('selected');
+                });
+            }
+            selectedAnswers.push(index);
+            element.classList.add('selected');
+        }
+        updateMultipleUI();
+    }
+
+    function updateMultipleUI() {
+        const count = selectedAnswers.length;
+        const max = currentVote.maxChoices;
+        document.getElementById('selected-count-display').textContent = count;
+        document.querySelectorAll('.option').forEach(el => {
+            const idx = parseInt(el.dataset.index);
+            const isSelected = selectedAnswers.includes(idx);
+            if (count >= max && !isSelected) el.classList.add('dimmed');
+            else el.classList.remove('dimmed');
+        });
+    }
+
+    function sendVote(answers) {
+        if (!conn || !conn.open) { alert('Connexion perdue.'); return; }
+        if (!siegeNumero) { alert('Numéro de siège manquant.'); return; }
+        conn.send({ type: 'vote', siege: siegeNumero, answers: answers });
+        hasVotedThisRound = true;
+        showScreen('voted-screen');
+    }
+
+    function voteSimple(index) { sendVote([index]); }
+    function submitMultiple() { sendVote(selectedAnswers); }
+    function voteBlank() { sendVote([]); }
+
+    function updateStatus(text, connected) {
+        const statusText = document.getElementById('status-text');
+        const statusDot = document.getElementById('status-dot');
+        if (statusText) statusText.textContent = text;
+        if (statusDot) statusDot.classList.toggle('connected', connected);
+    }
+
+    function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+    window.onload = init;
+    document.addEventListener('visibilitychange', () => {
+        if (sessionClosed) return;
+        if (!document.hidden && (!conn || !conn.open) && siegeNumero) connectToAdmin();
+    });
+    window.onbeforeunload = () => {
+        if (reconnectInterval) clearInterval(reconnectInterval);
+        if (connectionTimeout) clearTimeout(connectionTimeout);
+    };
+</script>
 </body>
 </html>
