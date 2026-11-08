@@ -27,6 +27,9 @@
         .code-input { font-size: 2rem; text-align: center; letter-spacing: 0.5rem; text-transform: lowercase; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; width: 100%; margin-bottom: 1rem; font-family: monospace; }
         .code-input:focus { outline: none; border-color: var(--primary); }
         .code-input::placeholder { letter-spacing: 0.5rem; color: #cbd5e1; }
+        .siege-input { font-size: 2rem; text-align: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; width: 100%; margin-bottom: 1rem; font-family: monospace; }
+        .siege-input:focus { outline: none; border-color: var(--primary); }
+        .siege-input::placeholder { color: #cbd5e1; }
         .option { display: flex; align-items: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 0.6rem; cursor: pointer; transition: all 0.15s; text-align: left; background: var(--card); }
         .option:active { transform: scale(0.98); }
         .option.selected { border-color: var(--primary); background: #eff6ff; }
@@ -69,20 +72,16 @@
 <body>
     <div class="container" id="main-container">
 
-        <!-- ===== ÉCRAN D'AUTHENTIFICATION / ERREUR (nouveau) ===== -->
-        <div id="auth-screen" class="card">
-            <div class="spinner"></div>
-            <h1>Vérification…</h1>
-            <p>Vérification de votre compte en cours. Veuillez patienter.</p>
+        <!-- ===== 1. SAISIE DU NUMÉRO DE SIÈGE ===== -->
+        <div id="siege-screen" class="card hidden">
+            <h1>Identification</h1>
+            <p style="margin-bottom: 1rem;">Entrez votre numéro de siège pour participer au vote.</p>
+            <input type="number" id="siege-input" class="siege-input" placeholder="N°" min="1" autocomplete="off">
+            <button onclick="submitSiege()">Continuer</button>
+            <div id="siege-error" class="error-box hidden"></div>
         </div>
 
-        <div id="no-seat-screen" class="card hidden">
-            <h1>Accès refusé</h1>
-            <p>Aucun numéro de siège n'est associé à votre compte. Contactez un administrateur pour régulariser votre situation avant de pouvoir voter.</p>
-            <div id="no-seat-error" class="error-box"></div>
-        </div>
-
-        <!-- ===== SAISIE DU CODE DE SESSION ===== -->
+        <!-- ===== 2. SAISIE DU CODE DE SESSION ===== -->
         <div id="code-screen" class="card hidden">
             <h1>Rejoindre un vote</h1>
             <p style="margin-bottom: 1rem;">Entrez le code de session fourni par l'administrateur ou scannez le QR Code.</p>
@@ -90,6 +89,7 @@
             <input type="text" id="session-code-input" class="code-input" placeholder="code" maxlength="4" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
             <button onclick="submitCode()">Rejoindre</button>
             <button class="btn-blank" onclick="startQrScan()" style="margin-top: 0.5rem;">📷 Scanner un QR Code</button>
+            <button class="btn-blank" onclick="changeSiege()" style="margin-top: 0.5rem; font-size: 0.85rem;">Changer de numéro de siège</button>
             <div id="qr-reader" class="hidden"></div>
             <div id="qr-error" class="error-box hidden"></div>
         </div>
@@ -162,148 +162,29 @@
         </div>
     </div>
 
-    <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
-    import {
-        getAuth,
-        onAuthStateChanged,
-        signOut
-    } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-    import {
-        getFirestore,
-        doc,
-        getDoc
-    } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
-
-    const firebaseConfig = {
-        apiKey: "AIzaSyBulM5-30n3SoH7zT7nxDBvB42Pu4c3qSs",
-        authDomain: "mdl-et-cvl-2027.firebaseapp.com",
-        projectId: "mdl-et-cvl-2027",
-        storageBucket: "mdl-et-cvl-2027.firebasestorage.app",
-        messagingSenderId: "142816093888",
-        appId: "1:142816093888:web:9f7c3632732a526b7c2f25",
-        measurementId: "G-FBKEPBY0CQ"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
-    const LOGIN_URL = 'https://account.honore-romane.fr/login/';
-    // URL de cette page (pour le retour après connexion)
-    const SELF_URL = 'https://account.honore-romane.fr/vote/';
-
-    // --- état global (inchangé) ---
+    <script>
     let peer = null, conn = null, sessionId = null, displayCode = null, reconnectInterval = null;
     let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
     let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
     let currentServerIndex = 0, reconnectAttempts = 0;
-    // Numéro de siège du votant — UNIQUEMENT en mémoire, récupéré depuis Firestore
+    // Numéro de siège du votant — UNIQUEMENT en mémoire (pas de localStorage)
     let siegeNumero = null;
-
-    // ============================================================
-    //  AUTHENTIFICATION FIREBASE
-    // ============================================================
-
-    // Construit l'URL de login avec redirect vers cette page, en conservant
-    // les paramètres d'URL existants (s, session, siege…).
-    function buildLoginUrl() {
-        const redirectUrl = new URL(SELF_URL);
-        const currentParams = new URLSearchParams(window.location.search);
-        // On ne propage PAS 'siege' (il est déterminé par le compte, pas par l'URL)
-        currentParams.forEach((value, key) => {
-            if (key !== 'siege') redirectUrl.searchParams.set(key, value);
-        });
-        return LOGIN_URL + '?redirect=' + encodeURIComponent(redirectUrl.toString());
-    }
-
-    function goToLogin() {
-        window.location.replace(buildLoginUrl());
-    }
-
-    // Vérifie l'utilisateur Firebase + récupère son siège dans Firestore.
-    // Retourne le numéro de siège (entier >= 1) ou lance la redirection et retourne null.
-    async function checkAuthAndGetSeat() {
-        return new Promise((resolve) => {
-            const unsub = onAuthStateChanged(auth, async (user) => {
-                unsub();
-
-                if (!user) {
-                    goToLogin();
-                    resolve(null);
-                    return;
-                }
-
-                try {
-                    const snap = await getDoc(doc(db, 'users', user.uid));
-                    if (!snap.exists()) {
-                        await signOut(auth).catch(() => {});
-                        goToLogin();
-                        resolve(null);
-                        return;
-                    }
-                    const data = snap.data();
-                    if (data.status !== 'active') {
-                        await signOut(auth).catch(() => {});
-                        goToLogin();
-                        resolve(null);
-                        return;
-                    }
-                    const seat = Number(data.seatNumber);
-                    if (!Number.isInteger(seat) || seat < 1) {
-                        // Compte actif mais sans siège attribué → on refuse l'accès au vote
-                        resolve({ error: 'no-seat' });
-                        return;
-                    }
-                    resolve({ seat });
-                } catch (err) {
-                    console.error('Erreur vérification compte:', err);
-                    await signOut(auth).catch(() => {});
-                    goToLogin();
-                    resolve(null);
-                }
-            });
-        });
-    }
-
-    // ============================================================
-    //  DÉMARRAGE
-    // ============================================================
-
-    async function bootstrap() {
-        const result = await checkAuthAndGetSeat();
-        if (!result) return; // redirection en cours
-
-        if (result.error === 'no-seat') {
-            showScreen('no-seat-screen');
-            return;
-        }
-
-        // Siège récupéré depuis Firestore (fiable, non modifiable par l'utilisateur)
-        siegeNumero = result.seat;
-
-        // Met à jour l'URL pour refléter le siège réel (sans recharger)
-        try {
-            const url = new URL(window.location);
-            url.searchParams.set('siege', String(siegeNumero));
-            window.history.replaceState({}, '', url);
-        } catch (_) {}
-
-        init();
-    }
-
-    // ============================================================
-    //  INIT (logique existante, adaptée)
-    // ============================================================
 
     function init() {
         const params = new URLSearchParams(window.location.search);
         const codeFromUrl = params.get('s') || params.get('session');
+        const siegeFromUrl = params.get('siege');
 
-        // Le siège est déjà défini ; on ne lit plus ?siege= pour l'attribuer.
+        // Le numéro de siège peut venir de l'URL (ex. ?s=abcd&siege=12)
+        if (siegeFromUrl) {
+            const n = parseInt(siegeFromUrl);
+            if (!isNaN(n) && n > 0) siegeNumero = n;
+        }
+
+        // Si pas de numéro de siège → écran de saisie du siège
         if (!siegeNumero) {
-            // Sécurité : ne devrait jamais arriver (bootstrap l'a défini)
-            showScreen('no-seat-screen');
+            showScreen('siege-screen');
+            setTimeout(() => document.getElementById('siege-input').focus(), 100);
             return;
         }
 
@@ -311,17 +192,55 @@
         if (!codeFromUrl) {
             updateSiegeReminder();
             showScreen('code-screen');
-            setTimeout(() => {
-                const el = document.getElementById('session-code-input');
-                if (el) el.focus();
-            }, 100);
+            setTimeout(() => document.getElementById('session-code-input').focus(), 100);
             return;
         }
 
-        // Siège + code présents → connexion automatique
+        // Siège + code présents → connexion automatique (saute l'écran code)
         displayCode = codeFromUrl.toLowerCase().trim();
         sessionId = APP_PREFIX + '-' + displayCode;
         startConnection();
+    }
+
+    // ===== Écran de saisie du numéro de siège =====
+    function submitSiege() {
+        const input = document.getElementById('siege-input');
+        const errDiv = document.getElementById('siege-error');
+        const n = parseInt(input.value);
+        if (isNaN(n) || n < 1) {
+            errDiv.textContent = 'Veuillez entrer un numéro de siège valide (entier positif).';
+            errDiv.classList.remove('hidden');
+            return;
+        }
+        errDiv.classList.add('hidden');
+        siegeNumero = n;
+
+        // Si un code de session est déjà dans l'URL → connexion automatique
+        const params = new URLSearchParams(window.location.search);
+        const codeFromUrl = params.get('s') || params.get('session');
+        if (codeFromUrl) {
+            displayCode = codeFromUrl.toLowerCase().trim();
+            sessionId = APP_PREFIX + '-' + displayCode;
+            // Met à jour l'URL pour refléter le siège (sans recharger)
+            const url = new URL(window.location);
+            url.searchParams.set('s', displayCode);
+            url.searchParams.set('siege', String(siegeNumero));
+            window.history.replaceState({}, '', url);
+            startConnection();
+            return;
+        }
+
+        // Sinon → écran de code
+        updateSiegeReminder();
+        showScreen('code-screen');
+        setTimeout(() => document.getElementById('session-code-input').focus(), 100);
+    }
+
+    function changeSiege() {
+        siegeNumero = null; // uniquement en mémoire, rien à supprimer côté stockage
+        document.getElementById('siege-input').value = '';
+        showScreen('siege-screen');
+        setTimeout(() => document.getElementById('siege-input').focus(), 100);
     }
 
     function updateSiegeReminder() {
@@ -394,13 +313,13 @@
     function startConnection() {
         if (sessionClosed) return;
         if (!siegeNumero) {
-            showScreen('no-seat-screen');
+            showScreen('siege-screen');
             return;
         }
         showScreen('loading-screen');
         connectToAdmin();
     }
-
+    
     function connectToAdmin() {
         if (sessionClosed) return;
         updateStatus('Connexion...', false);
@@ -408,7 +327,7 @@
         updateServerHint(`Serveur : ${server.host} (${currentServerIndex + 1}/${PEER_CONFIG.servers.length})`);
         if (!clientId) clientId = 'c-' + Math.random().toString(36).substr(2, 12);
         if (peer) { try { peer.destroy(); } catch(e) {} }
-
+        
         const peerOptions = {
             ...PEER_CONFIG.commonOptions,
             host: server.host,
@@ -417,16 +336,16 @@
             secure: server.secure,
             key: server.key
         };
-
+        
         try {
             peer = new Peer(clientId, peerOptions);
         } catch (e) {
             switchToNextServerClient();
             return;
         }
-
+        
         let opened = false;
-
+        
         peer.on('open', (id) => {
             opened = true;
             console.log('Client PeerJS ouvert avec ID:', id, 'sur', server.host);
@@ -449,7 +368,7 @@
             conn.on('close', () => { connectionEstablished = false; if (sessionClosed) return; updateStatus('Déconnecté', false); scheduleReconnect(); });
             conn.on('error', (err) => { connectionEstablished = false; clearTimeout(connectionTimeout); if (sessionClosed) return; updateStatus('Erreur', false); scheduleReconnect(); });
         });
-
+        
         peer.on('error', (err) => {
             if (sessionClosed) return;
             console.error('Erreur PeerJS:', err);
@@ -465,20 +384,20 @@
                 scheduleReconnect();
             }
         });
-
+        
         peer.on('disconnected', () => {
             if (sessionClosed) return;
             updateStatus('Reconnexion...', false);
             if (!opened) switchToNextServerClient();
             else scheduleReconnect();
         });
-
+        
         peer.on('close', () => {
             if (sessionClosed) return;
             scheduleReconnect();
         });
     }
-
+    
     function switchToNextServerClient() {
         currentServerIndex = (currentServerIndex + 1) % PEER_CONFIG.servers.length;
         console.warn('Client bascule vers serveur:', PEER_CONFIG.servers[currentServerIndex].host);
@@ -486,12 +405,12 @@
         peer = null;
         setTimeout(() => connectToAdmin(), 800);
     }
-
+    
     function updateServerHint(text) {
         const el = document.getElementById('server-hint');
         if (el) el.textContent = text;
     }
-
+    
     function scheduleReconnect() {
         if (sessionClosed) return;
         if (reconnectInterval) clearInterval(reconnectInterval);
@@ -506,7 +425,7 @@
             if (!conn || !conn.open) { connectToAdmin(); } else { clearInterval(reconnectInterval); }
         }, 3000);
     }
-
+    
     function handleAdminMessage(data) {
         if (sessionClosed) return;
         switch(data.type) {
@@ -597,7 +516,7 @@
     }
 
     function showScreen(screenId) {
-        const screens = ['auth-screen', 'no-seat-screen', 'code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen'];
+        const screens = ['siege-screen', 'code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen'];
         screens.forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', id !== screenId); });
         const container = document.getElementById('main-container');
         container.classList.toggle('landscape', screenId === 'vote-simple-screen');
@@ -685,25 +604,15 @@
 
     function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
 
-    // Exposer les fonctions appelées par les attributs HTML inline
-    // (nécessaire car on est dans un module ES)
-    window.submitCode = submitCode;
-    window.startQrScan = startQrScan;
-    window.voteSimple = voteSimple;
-    window.submitMultiple = submitMultiple;
-    window.voteBlank = voteBlank;
-
-    // Démarrage : vérification auth d'abord, puis init()
-    bootstrap();
-
+    window.onload = init;
     document.addEventListener('visibilitychange', () => {
         if (sessionClosed) return;
-        if (!document.hidden && siegeNumero && (!conn || !conn.open)) connectToAdmin();
+        if (!document.hidden && (!conn || !conn.open) && siegeNumero) connectToAdmin();
     });
     window.onbeforeunload = () => {
         if (reconnectInterval) clearInterval(reconnectInterval);
         if (connectionTimeout) clearTimeout(connectionTimeout);
     };
-    </script>
+</script>
 </body>
 </html>
