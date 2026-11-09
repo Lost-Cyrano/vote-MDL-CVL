@@ -6,6 +6,39 @@
     <title>Vote</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jose@5.9.6/dist/browser/jose.umd.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+        import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBulM5-30n3SoH7zT7nxDBvB42Pu4c3qSs",
+            authDomain: "mdl-et-cvl-2027.firebaseapp.com",
+            projectId: "mdl-et-cvl-2027",
+            databaseURL: "https://mdl-et-cvl-2027-default-rtdb.europe-west1.firebasedatabase.app"
+        };
+        const fbApp = initializeApp(firebaseConfig);
+        const rtdb = getDatabase(fbApp);
+
+        // Exposé globalement pour le script principal
+        window.__verifyToken = async (token) => {
+            try {
+                const keySnap = await get(ref(rtdb, 'config/jwtKey'));
+                if (!keySnap.exists()) throw new Error('Clé absente');
+                const secret = new TextEncoder().encode(keySnap.val());
+
+                const { payload } = await jose.jwtVerify(token, secret, {
+                    issuer: 'account.honore-romane.fr',
+                    audience: 'vote.honore-romane.fr'
+                });
+                return payload;
+            } catch (e) {
+                console.error('Vérif JWT échouée:', e);
+                return null;
+            }
+        };
+        window.__firebaseReady = true;
+    </script>
     <script src="config.js"></script>
     <style>
         :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --text-light: #64748b; --border: #e2e8f0; --success: #10b981; --danger: #ef4444; --pour: #2563eb; --abstention: #ffffff; --contre: #dc2626; }
@@ -27,9 +60,6 @@
         .code-input { font-size: 2rem; text-align: center; letter-spacing: 0.5rem; text-transform: lowercase; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; width: 100%; margin-bottom: 1rem; font-family: monospace; }
         .code-input:focus { outline: none; border-color: var(--primary); }
         .code-input::placeholder { letter-spacing: 0.5rem; color: #cbd5e1; }
-        .siege-input { font-size: 2rem; text-align: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; width: 100%; margin-bottom: 1rem; font-family: monospace; }
-        .siege-input:focus { outline: none; border-color: var(--primary); }
-        .siege-input::placeholder { color: #cbd5e1; }
         .option { display: flex; align-items: center; padding: 1rem; border: 2px solid var(--border); border-radius: 12px; margin-bottom: 0.6rem; cursor: pointer; transition: all 0.15s; text-align: left; background: var(--card); }
         .option:active { transform: scale(0.98); }
         .option.selected { border-color: var(--primary); background: #eff6ff; }
@@ -72,13 +102,11 @@
 <body>
     <div class="container" id="main-container">
 
-        <!-- ===== 1. SAISIE DU NUMÉRO DE SIÈGE ===== -->
-        <div id="siege-screen" class="card hidden">
-            <h1>Identification</h1>
-            <p style="margin-bottom: 1rem;">Entrez votre numéro de siège pour participer au vote.</p>
-            <input type="number" id="siege-input" class="siege-input" placeholder="N°" min="1" autocomplete="off">
-            <button onclick="submitSiege()">Continuer</button>
-            <div id="siege-error" class="error-box hidden"></div>
+        <!-- ===== 0. VÉRIFICATION DU TOKEN ===== -->
+        <div id="verify-screen" class="card">
+            <div class="spinner"></div>
+            <h1>Vérification…</h1>
+            <p>Validation de votre identité en cours.</p>
         </div>
 
         <!-- ===== 2. SAISIE DU CODE DE SESSION ===== -->
@@ -162,95 +190,56 @@
         </div>
     </div>
 
-    <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
-    import {
-        getDatabase,
-        ref,
-        get,
-        remove
-    } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
-
-    const firebaseConfig = {
-        apiKey: "AIzaSyBulM5-30n3SoH7zT7nxDBvB42Pu4c3qSs",
-        authDomain: "mdl-et-cvl-2027.firebaseapp.com",
-        projectId: "mdl-et-cvl-2027",
-        storageBucket: "mdl-et-cvl-2027.firebasestorage.app",
-        messagingSenderId: "142816093888",
-        appId: "1:142816093888:web:9f7c3632732a526b7c2f25",
-        measurementId: "G-FBKEPBY0CQ"
-    };
-
-    const fbApp = initializeApp(firebaseConfig);
-    const rtdb = getDatabase(fbApp);
-
-    const TOOLS_URL = 'https://account.honore-romane.fr/tools/vote/';
-
+    <script>
     let peer = null, conn = null, sessionId = null, displayCode = null, reconnectInterval = null;
     let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
     let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
     let currentServerIndex = 0, reconnectAttempts = 0;
-    // Numéro de siège du votant — UNIQUEMENT en mémoire (pas de localStorage)
+    // Numéro de siège du votant — récupéré depuis le JWT
     let siegeNumero = null;
-
-    // Vérifie le handoff passé en ?h= et retourne le siège, ou null
-    async function verifyHandoff() {
-        const params = new URLSearchParams(window.location.search);
-        const handoffId = params.get('h');
-        if (!handoffId) return { ok: false, noHandoff: true };
-
-        try {
-            const snap = await get(ref(rtdb, 'handoff/' + handoffId));
-            if (!snap.exists()) return { ok: false };
-
-            const data = snap.val();
-            if (!data || typeof data.siege !== 'number') return { ok: false };
-
-            // Supprime le handoff (usage unique)
-            await remove(ref(rtdb, 'handoff/' + handoffId));
-
-            return { ok: true, siege: data.siege };
-        } catch (e) {
-            console.error('Handoff error:', e);
-            return { ok: false };
-        }
-    }
+    let tokenPayload = null;
 
     async function init() {
         const params = new URLSearchParams(window.location.search);
+        const token = params.get('t');
         const codeFromUrl = params.get('s') || params.get('session');
-        const siegeFromUrl = params.get('siege');
 
-        // 1. Vérification du handoff (prioritaire)
-        if (params.get('h')) {
-            const result = await verifyHandoff();
-            if (!result.ok) {
-                // Handoff invalide → redirection
-                window.location.replace(TOOLS_URL);
-                return;
-            }
-            siegeNumero = result.siege;
-
-            // Nettoie l'URL (retire ?h=)
-            const url = new URL(window.location);
-            url.searchParams.delete('h');
-            window.history.replaceState({}, '', url);
-        }
-
-        // 2. Siège depuis l'URL (fallback si pas de handoff)
-        if (!siegeNumero && siegeFromUrl) {
-            const n = parseInt(siegeFromUrl);
-            if (!isNaN(n) && n > 0) siegeNumero = n;
-        }
-
-        // 3. Écran de saisie du siège si toujours rien
-        if (!siegeNumero) {
-            showScreen('siege-screen');
-            setTimeout(() => document.getElementById('siege-input').focus(), 100);
+        // --- Vérification du JWT ---
+        if (!token) {
+            redirectToAccount();
             return;
         }
 
-        // 4. Écran de code si pas de code de session
+        // Attendre que le module Firebase soit prêt (chargement async)
+        const waitForFirebase = () => new Promise(resolve => {
+            if (window.__firebaseReady) { resolve(); return; }
+            const check = setInterval(() => {
+                if (window.__firebaseReady) { clearInterval(check); resolve(); }
+            }, 50);
+            setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+        });
+        await waitForFirebase();
+
+        if (!window.__verifyToken) {
+            redirectToAccount();
+            return;
+        }
+
+        const payload = await window.__verifyToken(token);
+        if (!payload || !payload.siege) {
+            redirectToAccount();
+            return;
+        }
+
+        tokenPayload = payload;
+        siegeNumero = payload.siege;
+
+        // Nettoyage de l'URL : on retire le token
+        const cleanUrl = new URL(window.location);
+        cleanUrl.searchParams.delete('t');
+        window.history.replaceState({}, '', cleanUrl);
+
+        // --- Suite du comportement ---
         if (!codeFromUrl) {
             updateSiegeReminder();
             showScreen('code-screen');
@@ -258,51 +247,18 @@
             return;
         }
 
-        // 5. Connexion automatique
         displayCode = codeFromUrl.toLowerCase().trim();
         sessionId = APP_PREFIX + '-' + displayCode;
         startConnection();
     }
 
-    // ===== Écran de saisie du numéro de siège =====
-    function submitSiege() {
-        const input = document.getElementById('siege-input');
-        const errDiv = document.getElementById('siege-error');
-        const n = parseInt(input.value);
-        if (isNaN(n) || n < 1) {
-            errDiv.textContent = 'Veuillez entrer un numéro de siège valide (entier positif).';
-            errDiv.classList.remove('hidden');
-            return;
-        }
-        errDiv.classList.add('hidden');
-        siegeNumero = n;
-
-        // Si un code de session est déjà dans l'URL → connexion automatique
-        const params = new URLSearchParams(window.location.search);
-        const codeFromUrl = params.get('s') || params.get('session');
-        if (codeFromUrl) {
-            displayCode = codeFromUrl.toLowerCase().trim();
-            sessionId = APP_PREFIX + '-' + displayCode;
-            // Met à jour l'URL pour refléter le siège (sans recharger)
-            const url = new URL(window.location);
-            url.searchParams.set('s', displayCode);
-            url.searchParams.set('siege', String(siegeNumero));
-            window.history.replaceState({}, '', url);
-            startConnection();
-            return;
-        }
-
-        // Sinon → écran de code
-        updateSiegeReminder();
-        showScreen('code-screen');
-        setTimeout(() => document.getElementById('session-code-input').focus(), 100);
+    function redirectToAccount() {
+        window.location.replace('https://account.honore-romane.fr/tools/vote/');
     }
 
+    // ===== Changement de siège → retour à account =====
     function changeSiege() {
-        siegeNumero = null; // uniquement en mémoire, rien à supprimer côté stockage
-        document.getElementById('siege-input').value = '';
-        showScreen('siege-screen');
-        setTimeout(() => document.getElementById('siege-input').focus(), 100);
+        redirectToAccount();
     }
 
     function updateSiegeReminder() {
@@ -318,7 +274,6 @@
         sessionId = APP_PREFIX + '-' + code;
         const url = new URL(window.location);
         url.searchParams.set('s', code);
-        if (siegeNumero) url.searchParams.set('siege', String(siegeNumero));
         window.history.replaceState({}, '', url);
         startConnection();
     }
@@ -375,7 +330,7 @@
     function startConnection() {
         if (sessionClosed) return;
         if (!siegeNumero) {
-            showScreen('siege-screen');
+            redirectToAccount();
             return;
         }
         showScreen('loading-screen');
@@ -578,7 +533,7 @@
     }
 
     function showScreen(screenId) {
-        const screens = ['siege-screen', 'code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen'];
+        const screens = ['verify-screen', 'code-screen', 'loading-screen', 'waiting-screen', 'vote-simple-screen', 'vote-multiple-screen', 'voted-screen', 'results-waiting-screen', 'closed-screen'];
         screens.forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', id !== screenId); });
         const container = document.getElementById('main-container');
         container.classList.toggle('landscape', screenId === 'vote-simple-screen');
@@ -666,16 +621,7 @@
 
     function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
 
-    // Exposer les fonctions utilisées par les onclick inline
-    window.submitSiege = submitSiege;
-    window.changeSiege = changeSiege;
-    window.submitCode = submitCode;
-    window.startQrScan = startQrScan;
-    window.voteSimple = voteSimple;
-    window.submitMultiple = submitMultiple;
-    window.voteBlank = voteBlank;
-
-    window.addEventListener('load', init);
+    window.onload = init;
     document.addEventListener('visibilitychange', () => {
         if (sessionClosed) return;
         if (!document.hidden && (!conn || !conn.open) && siegeNumero) connectToAdmin();
