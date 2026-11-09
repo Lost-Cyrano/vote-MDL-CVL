@@ -23,12 +23,13 @@
         const fbApp = initializeApp(firebaseConfig);
         const db = getFirestore(fbApp);
 
-        // Exposé globalement pour le script principal
         window.__verifyToken = async (token) => {
             try {
                 const keySnap = await getDoc(doc(db, 'config', 'jwtKey'));
-                if (!keySnap.exists()) throw new Error('Clé absente');
-                const secret = new TextEncoder().encode(keySnap.data().value);
+                if (!keySnap.exists()) throw new Error('Clé absente (config/jwtKey)');
+                const raw = keySnap.data().value;
+                if (!raw || typeof raw !== 'string') throw new Error('Champ value invalide');
+                const secret = new TextEncoder().encode(raw);
 
                 const { payload } = await jose.jwtVerify(token, secret, {
                     issuer: 'account.honore-romane.fr',
@@ -105,14 +106,12 @@
 <body>
     <div class="container" id="main-container">
 
-        <!-- ===== 0. VÉRIFICATION DU TOKEN ===== -->
         <div id="verify-screen" class="card">
             <div class="spinner"></div>
             <h1>Vérification…</h1>
             <p>Validation de votre identité en cours.</p>
         </div>
 
-        <!-- ===== 2. SAISIE DU CODE DE SESSION ===== -->
         <div id="code-screen" class="card hidden">
             <h1>Rejoindre un vote</h1>
             <p style="margin-bottom: 1rem;">Entrez le code de session fourni par l'administrateur ou scannez le QR Code.</p>
@@ -198,7 +197,6 @@
     let currentVote = null, selectedAnswers = [], hasVotedThisRound = false, clientId = null;
     let sessionClosed = false, qrScanner = null, connectionEstablished = false, pendingVoteDraft = null, connectionTimeout = null;
     let currentServerIndex = 0, reconnectAttempts = 0;
-    // Numéro de siège du votant — récupéré depuis le JWT
     let siegeNumero = null;
     let tokenPayload = null;
 
@@ -207,13 +205,11 @@
         const token = params.get('t');
         const codeFromUrl = params.get('s') || params.get('session');
 
-        // --- Vérification du JWT ---
         if (!token) {
             redirectToAccount();
             return;
         }
 
-        // Attendre que le module Firebase soit prêt (chargement async)
         const waitForFirebase = () => new Promise(resolve => {
             if (window.__firebaseReady) { resolve(); return; }
             const check = setInterval(() => {
@@ -237,12 +233,10 @@
         tokenPayload = payload;
         siegeNumero = payload.siege;
 
-        // Nettoyage de l'URL : on retire le token
         const cleanUrl = new URL(window.location);
         cleanUrl.searchParams.delete('t');
         window.history.replaceState({}, '', cleanUrl);
 
-        // --- Suite du comportement ---
         if (!codeFromUrl) {
             updateSiegeReminder();
             showScreen('code-screen');
@@ -259,7 +253,6 @@
         window.location.replace('https://account.honore-romane.fr/tools/vote/');
     }
 
-    // ===== Changement de siège → retour à account =====
     function changeSiege() {
         redirectToAccount();
     }
