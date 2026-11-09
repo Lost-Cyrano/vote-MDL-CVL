@@ -8,6 +8,100 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBulM5-30n3SoH7zT7nxDBvB42Pu4c3qSs",
+            authDomain: "mdl-et-cvl-2027.firebaseapp.com",
+            projectId: "mdl-et-cvl-2027",
+            storageBucket: "mdl-et-cvl-2027.firebasestorage.app",
+            messagingSenderId: "142816093888",
+            appId: "1:142816093888:web:9f7c3632732a526b7c2f25",
+            measurementId: "G-FBKEPBY0CQ"
+        };
+        const fbApp = initializeApp(firebaseConfig);
+        const db = getFirestore(fbApp);
+
+        // --- Helpers base64url ---
+        function b64urlEncode(bytes) {
+            let bin = '';
+            for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+            return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+        function b64urlDecodeToBytes(str) {
+            const pad = str.length % 4 === 0 ? '' : '='.repeat(4 - (str.length % 4));
+            const b64 = str.replace(/-/g, '+').replace(/_/g, '/') + pad;
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return bytes;
+        }
+        function b64urlDecodeToString(str) {
+            return new TextDecoder().decode(b64urlDecodeToBytes(str));
+        }
+
+        // --- Vérification JWT HS256 avec crypto.subtle ---
+        window.__verifyToken = async (token) => {
+            try {
+                const keySnap = await getDoc(doc(db, 'config', 'jwtKey'));
+                if (!keySnap.exists()) throw new Error('Clé absente (config/jwtKey)');
+                const raw = keySnap.data().value;
+                if (!raw || typeof raw !== 'string') throw new Error('Champ value invalide');
+
+                const parts = token.split('.');
+                if (parts.length !== 3) throw new Error('Format JWT invalide');
+                const [headerB64, payloadB64, sigB64] = parts;
+
+                const header = JSON.parse(b64urlDecodeToString(headerB64));
+                if (header.alg !== 'HS256') throw new Error('Algorithme non supporté');
+
+                const cryptoKey = await crypto.subtle.importKey(
+                    'raw',
+                    new TextEncoder().encode(raw),
+                    { name: 'HMAC', hash: 'SHA-256' },
+                    false,
+                    ['verify']
+                );
+                const sigBytes = b64urlDecodeToBytes(sigB64);
+                const valid = await crypto.subtle.verify(
+                    'HMAC',
+                    cryptoKey,
+                    sigBytes,
+                    new TextEncoder().encode(headerB64 + '.' + payloadB64)
+                );
+                if (!valid) throw new Error('Signature invalide');
+
+                const payload = JSON.parse(b64urlDecodeToString(payloadB64));
+                if (payload.iss !== 'account.honore-romane.fr') throw new Error('iss invalide');
+                if (payload.aud !== 'vote.honore-romane.fr') throw new Error('aud invalide');
+                if (typeof payload.exp !== 'number' || payload.exp < Math.floor(Date.now() / 1000)) {
+                    throw new Error('Token expiré');
+                }
+
+                return payload;
+            } catch (e) {
+                console.error('Vérif JWT échouée:', e);
+                return null;
+            }
+        };
+
+        // --- Double vérification : l'utilisateur doit être admin dans Firestore ---
+        window.__checkAdminInFirestore = async (uid) => {
+            try {
+                const snap = await getDoc(doc(db, 'users', uid));
+                if (!snap.exists()) return false;
+                const data = snap.data();
+                return data.status === 'active' && data.isAdmin === true;
+            } catch (e) {
+                console.error('Vérif admin Firestore échouée:', e);
+                return false;
+            }
+        };
+
+        window.__firebaseReady = true;
+    </script>
     <script src="config.js"></script>
     <style>
         :root { --primary: #2563eb; --primary-hover: #1d4ed8; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --text-light: #64748b; --border: #e2e8f0; --success: #10b981; --danger: #ef4444; --warning: #f59e0b; --an: #1b558a; }
@@ -104,10 +198,49 @@
         .numero-input-wrap input { margin-bottom: 0; }
         .numero-input-wrap label { font-size: 0.85rem; color: var(--text-light); display: block; margin-bottom: 0.25rem; }
         .siege-info { font-size: 0.8rem; color: var(--text-light); padding: 0.5rem; background: var(--bg); border-radius: 8px; margin-bottom: 0.75rem; }
+
+        /* Écran de vérification plein écran */
+        #verify-screen {
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 1rem;
+            text-align: center;
+        }
+        #verify-screen .v-spinner {
+            width: 48px; height: 48px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: vspin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+        @keyframes vspin { to { transform: rotate(360deg); } }
+        #verify-screen.error .v-spinner { display: none; }
+        #verify-screen .v-error {
+            color: var(--danger);
+            font-size: 0.9rem;
+            margin-top: 0.75rem;
+            max-width: 32rem;
+            word-break: break-word;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+
+    <!-- Écran de vérification affiché par défaut -->
+    <div id="verify-screen">
+        <div class="v-spinner"></div>
+        <p id="verify-status">Vérification des droits d'administration…</p>
+        <p class="v-error" id="verify-error"></p>
+    </div>
+
+    <div class="container" id="main-container" style="display:none;">
         <div id="home-section" class="card">
             <h1>Session de vote</h1>
             <p style="text-align: center; margin-bottom: 1rem;">Scannez ce QR Code ou entrez le code pour rejoindre.</p>
@@ -226,6 +359,7 @@
 
     const HEMICYCLE_BASE = "https://vote.honore-romane.fr/scrutins/hemicycle.html";
     const SIEGES_URL = "sieges.json";
+    const ACCOUNT_FALLBACK = "https://account.honore-romane.fr/tools/vote/";
 
     const PDF_COLORS = {
         an: [27, 85, 138],
@@ -240,6 +374,86 @@
         border: [226, 232, 240],
         white: [255, 255, 255]
     };
+
+    // =====================================================================
+    // ==================== VÉRIFICATION D'ACCÈS ADMIN =====================
+    // =====================================================================
+    function showVerifyError(msg) {
+        const screen = document.getElementById('verify-screen');
+        screen.classList.add('error');
+        document.getElementById('verify-status').textContent = 'Accès refusé';
+        document.getElementById('verify-error').textContent = msg;
+        console.error(msg);
+    }
+
+    function redirectToAccount(reason) {
+        console.warn('Redirection vers account:', reason);
+        window.location.replace(ACCOUNT_FALLBACK);
+    }
+
+    async function bootstrap() {
+        // 1) Attendre que le module Firebase soit chargé
+        const waitForFirebase = () => new Promise(resolve => {
+            if (window.__firebaseReady) { resolve(); return; }
+            const check = setInterval(() => {
+                if (window.__firebaseReady) { clearInterval(check); resolve(); }
+            }, 50);
+            setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+        });
+        await waitForFirebase();
+
+        if (!window.__verifyToken || !window.__checkAdminInFirestore) {
+            redirectToAccount('Firebase non chargé');
+            return;
+        }
+
+        // 2) Lire le token dans l'URL
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('t');
+        if (!token) {
+            redirectToAccount('Token absent');
+            return;
+        }
+
+        // 3) Vérifier la signature du JWT
+        const payload = await window.__verifyToken(token);
+        if (!payload) {
+            redirectToAccount('Token invalide ou expiré');
+            return;
+        }
+
+        // 4) Vérifier le claim admin dans le JWT
+        if (payload.admin !== true) {
+            redirectToAccount('Claim admin absent du token');
+            return;
+        }
+
+        // 5) Double vérification côté Firestore : l'utilisateur est-il toujours admin actif ?
+        if (!payload.sub) {
+            redirectToAccount('sub absent du token');
+            return;
+        }
+        const stillAdmin = await window.__checkAdminInFirestore(payload.sub);
+        if (!stillAdmin) {
+            redirectToAccount('Utilisateur non admin ou inactif dans Firestore');
+            return;
+        }
+
+        // 6) Nettoyage de l'URL (retirer ?t=)
+        const cleanUrl = new URL(window.location);
+        cleanUrl.searchParams.delete('t');
+        window.history.replaceState({}, '', cleanUrl);
+
+        // 7) Afficher l'interface et lancer l'init normale
+        document.getElementById('verify-screen').style.display = 'none';
+        document.getElementById('main-container').style.display = 'flex';
+
+        await loadSiegesIdentites();
+        init();
+        toggleVoteMode();
+        addOption();
+        addOption();
+    }
 
     // ===== Chargement des identités des sièges =====
     async function loadSiegesIdentites() {
@@ -281,10 +495,10 @@
         if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
         displayCode = generateShortCode();
         sessionId = APP_PREFIX + '-' + displayCode;
-        
+
         const server = PEER_CONFIG.servers[currentServerIndex];
         updateServerStatus(`Serveur : ${server.host} (essai ${currentServerIndex + 1}/${PEER_CONFIG.servers.length})`);
-        
+
         const peerOptions = {
             ...PEER_CONFIG.commonOptions,
             host: server.host,
@@ -294,7 +508,7 @@
             key: server.key,
             pingInterval: 5000
         };
-        
+
         try {
             peer = new Peer(sessionId, peerOptions);
         } catch (e) {
@@ -302,9 +516,9 @@
             switchToNextServer();
             return;
         }
-        
+
         let opened = false;
-        
+
         peer.on('open', (id) => {
             opened = true;
             reconnectAttempts = 0;
@@ -319,7 +533,7 @@
             document.getElementById('connection-status').textContent = 'Prêt';
             document.getElementById('connection-status').className = 'badge success';
         });
-        
+
         peer.on('connection', (conn) => {
             connections.push(conn); voters.set(conn.peer, true); updateConnectedCount();
             conn.on('data', (data) => handleUserData(conn, data));
@@ -330,7 +544,7 @@
             });
             conn.on('error', (err) => { console.warn('Erreur connexion:', err); });
         });
-        
+
         peer.on('error', (err) => {
             console.error('Erreur PeerJS:', err);
             if (err.type === 'unavailable-id') {
@@ -349,18 +563,18 @@
             }
             showToast('Erreur: ' + err.type);
         });
-        
+
         peer.on('disconnected', () => {
             console.warn('Peer déconnecté, tentative de reconnexion...');
             if (sessionClosed) return;
             attemptReconnect();
         });
-        
+
         peer.on('close', () => {
             if (sessionClosed) return;
             attemptReconnect();
         });
-        
+
         const savedHistory = localStorage.getItem('vote_history_' + sessionId);
         if (savedHistory) {
             try { history = JSON.parse(savedHistory); } catch(e) { history = []; }
@@ -399,7 +613,7 @@
         }
         return formatNumero(startNumero);
     }
-    
+
     function switchToNextServer() {
         currentServerIndex = (currentServerIndex + 1) % PEER_CONFIG.servers.length;
         console.warn('Bascule vers serveur:', PEER_CONFIG.servers[currentServerIndex].host);
@@ -407,7 +621,7 @@
         peer = null;
         setTimeout(() => init(), 800);
     }
-    
+
     function attemptReconnect() {
         if (sessionClosed) return;
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -435,7 +649,7 @@
             }, 500);
         }, Math.min(1000 * reconnectAttempts, 8000));
     }
-    
+
     function recreatePeerWithCurrentCode() {
         if (sessionClosed) return;
         const server = PEER_CONFIG.servers[currentServerIndex];
@@ -485,19 +699,19 @@
         peer.on('disconnected', () => { if (!sessionClosed) attemptReconnect(); });
         peer.on('close', () => { if (!sessionClosed) attemptReconnect(); });
     }
-    
+
     function updateServerStatus(text) {
         const el = document.getElementById('server-status');
         if (el) el.textContent = text;
     }
-    
+
     function generateShortCode() { const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'; let code = ''; for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length)); return code; }
     function openAdmin() { saveStartNumero(); document.getElementById('home-section').classList.add('hidden'); document.getElementById('admin-section').classList.remove('hidden'); updateNextNumeroDisplay(); }
     function switchTab(tab) { document.getElementById('tab-create').classList.toggle('active', tab === 'create'); document.getElementById('tab-history').classList.toggle('active', tab === 'history'); document.getElementById('create-tab-content').classList.toggle('hidden', tab !== 'create'); document.getElementById('history-tab-content').classList.toggle('hidden', tab !== 'history'); if (tab === 'history') renderHistory(); }
-    
+
     function sendDraft() { if (draftTimeout) clearTimeout(draftTimeout); draftTimeout = setTimeout(() => { const draft = getCurrentDraft(); if (!draft) { broadcast({ type: 'draft_cancelled' }); return; } broadcast({ type: 'draft', draft }); }, 400); }
     function getCurrentDraft() { const question = document.getElementById('question-input').value.trim(); const mode = document.getElementById('vote-mode').value; const maxChoices = parseInt(document.getElementById('max-choices').value) || 1; let options = []; if (mode === 'multiple') document.querySelectorAll('.option-input').forEach(inp => { if (inp.value.trim()) options.push(inp.value.trim()); }); if (!question && options.length === 0) return null; return { question, mode, maxChoices, options }; }
-    
+
     function handleUserData(conn, data) {
         if (data.type === 'hello') {
             if (voteActive && currentVote) conn.send({ type: 'state', state: 'voting', vote: currentVote, hasVoted: hasVoted.has(conn.peer) });
@@ -517,7 +731,7 @@
     function updateConnectedCount() { document.getElementById('connected-count').textContent = voters.size; if (voteActive && waitingForVotes) document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
     function toggleVoteMode() { const mode = document.getElementById('vote-mode').value; document.getElementById('simple-options').classList.toggle('hidden', mode !== 'simple'); document.getElementById('multiple-options').classList.toggle('hidden', mode !== 'multiple'); }
     function addOption() { const list = document.getElementById('options-list'); const div = document.createElement('div'); div.className = 'vote-option'; div.innerHTML = `<input type="text" placeholder="Nom de l'option" class="option-input" oninput="sendDraft()"><button onclick="this.parentElement.remove(); sendDraft();">×</button>`; list.appendChild(div); }
-    
+
     function startVote() {
         const question = document.getElementById('question-input').value.trim(); if (!question) { showToast('Veuillez entrer une question.'); return; }
         const mode = document.getElementById('vote-mode').value; let options = []; let maxChoices = 1;
@@ -536,7 +750,7 @@
     function updateVoteProgress() { document.getElementById('votes-received').textContent = hasVoted.size; document.getElementById('remaining-voters').textContent = Math.max(0, voters.size - hasVoted.size); }
     function skipWaiting() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
     function showResults() { if (!voteActive) return; waitingForVotes = false; finishVote(); }
-    
+
     function calculateResults() {
         const options = currentVote.options;
         const mode = currentVote.mode;
@@ -568,7 +782,7 @@
         }
         return { counts, sorted, totalExpressed, totalVoters, absoluteMajority, winners, mode, options };
     }
-    
+
     function buildHemicycleData() {
         const counts = { pour: 0, contre: 0, abstention: 0 };
         const sieges = [];
@@ -617,7 +831,7 @@
             sieges
         };
     }
-    
+
     function finishVote() {
         if (!voteActive) return;
         voteActive = false; waitingForVotes = false;
@@ -659,14 +873,12 @@
                 } catch (e) {
                     console.warn('postMessage échoué:', e);
                 }
-                // Laisser le temps au rendu (fetch SVG + seatPaths)
                 setTimeout(() => resolve(true), 1800);
             };
             window.addEventListener('message', onMessage);
 
             iframe.src = HEMICYCLE_BASE;
 
-            // Timeout de sécurité
             setTimeout(() => {
                 if (!ready) {
                     window.removeEventListener('message', onMessage);
@@ -713,7 +925,7 @@
             list.appendChild(div);
         });
     }
-    
+
     function newVote() {
         document.getElementById('results-section').classList.add('hidden');
         document.getElementById('vote-section').classList.add('hidden');
@@ -727,7 +939,7 @@
         broadcast({ type: 'reset' }); broadcast({ type: 'draft_cancelled' });
         updateNextNumeroDisplay();
     }
-    
+
     function renderHistory() {
         const list = document.getElementById('history-list'); list.innerHTML = '';
         if (history.length === 0) {
@@ -753,7 +965,7 @@
             list.appendChild(div);
         });
     }
-    
+
     async function toggleHistoryDetail(element, entry) {
         const existing = element.querySelector('.history-detail');
         if (existing) { existing.remove(); return; }
@@ -784,7 +996,7 @@
             element.appendChild(detail);
         }
     }
-    
+
     function closeSessionAndExport() {
         if (!confirm('Clore la session ? Le PDF sera téléchargé et tous les participants seront déconnectés.')) return;
         sessionClosed = true;
@@ -1168,18 +1380,12 @@
             iframe.src = HEMICYCLE_BASE;
         });
     }
-    
+
     function copyLink() { const input = document.getElementById('session-link'); input.select(); document.execCommand('copy'); showToast('Lien copié !'); }
     function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
     function showToast(message) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
-    
-    window.onload = async () => {
-        await loadSiegesIdentites();
-        init();
-        toggleVoteMode();
-        addOption();
-        addOption();
-    };
+
+    window.onload = bootstrap;
     window.onbeforeunload = () => { if (peer) try { peer.destroy(); } catch(e) {} };
 </script>
 </body>
