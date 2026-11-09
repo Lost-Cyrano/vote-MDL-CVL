@@ -167,7 +167,7 @@
             <input type="text" id="session-code-input" class="code-input" placeholder="code" maxlength="4" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
             <button onclick="submitCode()">Rejoindre</button>
             <button class="btn-blank" onclick="startQrScan()" style="margin-top: 0.5rem;">📷 Scanner un QR Code</button>
-            <button class="btn-blank" onclick="changeSiege()" style="margin-top: 0.5rem; font-size: 0.85rem;">Changer de numéro de siège</button>
+            <button class="btn-blank" onclick="ReturnToAccountMenu()" style="margin-top: 0.5rem; font-size: 0.85rem;">Retourner au menu du compte</button>
             <div id="qr-reader" class="hidden"></div>
             <div id="qr-error" class="error-box hidden"></div>
         </div>
@@ -301,8 +301,8 @@
         window.location.replace('https://account.honore-romane.fr/tools/vote/');
     }
 
-    function changeSiege() {
-        redirectToAccount();
+    function ReturnToAccountMenu() {
+        window.location.replace('https://account.honore-romane.fr/account/');
     }
 
     function updateSiegeReminder() {
