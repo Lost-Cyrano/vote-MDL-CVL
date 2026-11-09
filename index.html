@@ -9,23 +9,26 @@
     <script src="https://cdn.jsdelivr.net/npm/jose@5.9.6/dist/browser/jose.umd.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
-        import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBulM5-30n3SoH7zT7nxDBvB42Pu4c3qSs",
             authDomain: "mdl-et-cvl-2027.firebaseapp.com",
             projectId: "mdl-et-cvl-2027",
-            databaseURL: "https://mdl-et-cvl-2027-default-rtdb.europe-west1.firebasedatabase.app"
+            storageBucket: "mdl-et-cvl-2027.firebasestorage.app",
+            messagingSenderId: "142816093888",
+            appId: "1:142816093888:web:9f7c3632732a526b7c2f25",
+            measurementId: "G-FBKEPBY0CQ"
         };
         const fbApp = initializeApp(firebaseConfig);
-        const rtdb = getDatabase(fbApp);
+        const db = getFirestore(fbApp);
 
         // Exposé globalement pour le script principal
         window.__verifyToken = async (token) => {
             try {
-                const keySnap = await get(ref(rtdb, 'config/jwtKey'));
+                const keySnap = await getDoc(doc(db, 'config', 'jwtKey'));
                 if (!keySnap.exists()) throw new Error('Clé absente');
-                const secret = new TextEncoder().encode(keySnap.val());
+                const secret = new TextEncoder().encode(keySnap.data().value);
 
                 const { payload } = await jose.jwtVerify(token, secret, {
                     issuer: 'account.honore-romane.fr',
