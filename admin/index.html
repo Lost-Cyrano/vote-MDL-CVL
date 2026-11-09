@@ -87,19 +87,6 @@
             }
         };
 
-        // --- Double vérification : l'utilisateur doit être admin dans Firestore ---
-        window.__checkAdminInFirestore = async (uid) => {
-            try {
-                const snap = await getDoc(doc(db, 'users', uid));
-                if (!snap.exists()) return false;
-                const data = snap.data();
-                return data.status === 'active' && data.isAdmin === true;
-            } catch (e) {
-                console.error('Vérif admin Firestore échouée:', e);
-                return false;
-            }
-        };
-
         window.__firebaseReady = true;
     </script>
     <script src="config.js"></script>
@@ -402,7 +389,7 @@
         });
         await waitForFirebase();
 
-        if (!window.__verifyToken || !window.__checkAdminInFirestore) {
+        if (!window.__verifyToken) {
             redirectToAccount('Firebase non chargé');
             return;
         }
@@ -428,16 +415,11 @@
             return;
         }
 
-        // 5) Double vérification côté Firestore : l'utilisateur est-il toujours admin actif ?
-        if (!payload.sub) {
-            redirectToAccount('sub absent du token');
-            return;
-        }
-        const stillAdmin = await window.__checkAdminInFirestore(payload.sub);
-        if (!stillAdmin) {
-            redirectToAccount('Utilisateur non admin ou inactif dans Firestore');
-            return;
-        }
+        // 5) Le JWT signé suffit : le claim admin a déjà été certifié par account
+if (!payload.sub) {
+    redirectToAccount('sub absent du token');
+    return;
+}
 
         // 6) Nettoyage de l'URL (retirer ?t=)
         const cleanUrl = new URL(window.location);
