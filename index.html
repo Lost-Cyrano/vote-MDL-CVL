@@ -6,7 +6,6 @@
     <title>Vote</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jose@5.9.6/dist/browser/jose.umd.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
         import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
@@ -23,18 +22,67 @@
         const fbApp = initializeApp(firebaseConfig);
         const db = getFirestore(fbApp);
 
+        // --- Helpers base64url ---
+        function b64urlEncode(bytes) {
+            let bin = '';
+            for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+            return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function b64urlDecodeToBytes(str) {
+            const pad = str.length % 4 === 0 ? '' : '='.repeat(4 - (str.length % 4));
+            const b64 = str.replace(/-/g, '+').replace(/_/g, '/') + pad;
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return bytes;
+        }
+
+        function b64urlDecodeToString(str) {
+            return new TextDecoder().decode(b64urlDecodeToBytes(str));
+        }
+
+        // --- Vérification JWT HS256 avec crypto.subtle ---
         window.__verifyToken = async (token) => {
             try {
                 const keySnap = await getDoc(doc(db, 'config', 'jwtKey'));
                 if (!keySnap.exists()) throw new Error('Clé absente (config/jwtKey)');
                 const raw = keySnap.data().value;
                 if (!raw || typeof raw !== 'string') throw new Error('Champ value invalide');
-                const secret = new TextEncoder().encode(raw);
 
-                const { payload } = await jose.jwtVerify(token, secret, {
-                    issuer: 'account.honore-romane.fr',
-                    audience: 'vote.honore-romane.fr'
-                });
+                const parts = token.split('.');
+                if (parts.length !== 3) throw new Error('Format JWT invalide');
+                const [headerB64, payloadB64, sigB64] = parts;
+
+                // Vérifier l'algorithme
+                const header = JSON.parse(b64urlDecodeToString(headerB64));
+                if (header.alg !== 'HS256') throw new Error('Algorithme non supporté');
+
+                // Vérifier la signature
+                const cryptoKey = await crypto.subtle.importKey(
+                    'raw',
+                    new TextEncoder().encode(raw),
+                    { name: 'HMAC', hash: 'SHA-256' },
+                    false,
+                    ['verify']
+                );
+                const sigBytes = b64urlDecodeToBytes(sigB64);
+                const valid = await crypto.subtle.verify(
+                    'HMAC',
+                    cryptoKey,
+                    sigBytes,
+                    new TextEncoder().encode(headerB64 + '.' + payloadB64)
+                );
+                if (!valid) throw new Error('Signature invalide');
+
+                // Décoder et vérifier le payload
+                const payload = JSON.parse(b64urlDecodeToString(payloadB64));
+                if (payload.iss !== 'account.honore-romane.fr') throw new Error('iss invalide');
+                if (payload.aud !== 'vote.honore-romane.fr') throw new Error('aud invalide');
+                if (typeof payload.exp !== 'number' || payload.exp < Math.floor(Date.now() / 1000)) {
+                    throw new Error('Token expiré');
+                }
+
                 return payload;
             } catch (e) {
                 console.error('Vérif JWT échouée:', e);
